@@ -1,0 +1,30 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16
+    container_name: devlogger-postgres
+    environment:
+      POSTGRES_DB: devloggerdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: src/DevLoggerBackend.Api/Dockerfile
+    container_name: devlogger-api
+    depends_on:
+      - postgres
+    ports:
+      - "5000:5000"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=devloggerdb;Username=postgres;Password=postgres
+      AllowedOrigins__0: http://localhost:3000
+
+volumes:
+  postgres-data:
