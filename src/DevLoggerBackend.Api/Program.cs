@@ -54,33 +54,39 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+var enableSwagger = app.Environment.IsDevelopment() ||
+    app.Configuration.GetValue<bool>("EnableSwaggerInProduction");
+
+if (enableSwagger)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 
-    app.Lifetime.ApplicationStarted.Register(() =>
+    if (app.Environment.IsDevelopment())
     {
-        var swaggerUrl = "http://localhost:5000/swagger";
-        try
+        app.Lifetime.ApplicationStarted.Register(() =>
         {
-            if (OperatingSystem.IsWindows())
+            var swaggerUrl = "http://localhost:5000/swagger";
+            try
             {
-                Process.Start(new ProcessStartInfo("cmd", $"/c start {swaggerUrl}") { CreateNoWindow = true });
+                if (OperatingSystem.IsWindows())
+                {
+                    Process.Start(new ProcessStartInfo("cmd", $"/c start {swaggerUrl}") { CreateNoWindow = true });
+                }
+                else if (OperatingSystem.IsLinux())
+                {
+                    Process.Start("xdg-open", swaggerUrl);
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    Process.Start("open", swaggerUrl);
+                }
             }
-            else if (OperatingSystem.IsLinux())
+            catch
             {
-                Process.Start("xdg-open", swaggerUrl);
             }
-            else if (OperatingSystem.IsMacOS())
-            {
-                Process.Start("open", swaggerUrl);
-            }
-        }
-        catch
-        {
-        }
-    });
+        });
+    }
 }
 
 var applyMigrationsOnStartup =
