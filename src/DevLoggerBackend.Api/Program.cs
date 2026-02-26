@@ -5,7 +5,15 @@ using Serilog;
 using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://localhost:5000");
+var renderPort = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(renderPort))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{renderPort}");
+}
+else
+{
+    builder.WebHost.UseUrls("http://localhost:5000");
+}
 
 builder.Host.UseSerilog((context, services, loggerConfiguration) =>
 {
@@ -75,6 +83,13 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-await app.ApplyDatabaseMigrationsAsync();
+var applyMigrationsOnStartup =
+    app.Configuration.GetValue<bool?>("ApplyMigrationsOnStartup") ?? app.Environment.IsDevelopment();
+
+if (applyMigrationsOnStartup)
+{
+    await app.ApplyDatabaseMigrationsAsync();
+}
+
 app.UseApiPipeline();
 app.Run();
