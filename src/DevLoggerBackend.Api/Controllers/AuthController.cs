@@ -17,7 +17,23 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Authenticates user with seeded credentials.
+    /// Registers a new user account.
+    /// </summary>
+    [HttpPost("register")]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Register([FromBody] RegisterRequestDto request, CancellationToken cancellationToken)
+    {
+        await _mediator.Send(
+            new RegisterCommand(request.Name, request.Email, request.Password, request.ConfirmPassword),
+            cancellationToken);
+
+        return StatusCode(StatusCodes.Status201Created, new { message = "User registered successfully." });
+    }
+
+    /// <summary>
+    /// Authenticates a registered user and returns a token.
     /// </summary>
     [HttpPost("login")]
     [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status200OK)]

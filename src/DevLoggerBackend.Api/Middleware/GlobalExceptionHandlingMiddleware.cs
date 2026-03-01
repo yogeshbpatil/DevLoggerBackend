@@ -50,6 +50,10 @@ public class GlobalExceptionHandlingMiddleware
                 response.StatusCode = StatusCodes.Status401Unauthorized;
                 response.Message = exception.Message;
                 break;
+            case ConflictException:
+                response.StatusCode = StatusCodes.Status409Conflict;
+                response.Message = exception.Message;
+                break;
             default:
                 response.StatusCode = StatusCodes.Status500InternalServerError;
                 response.Message = "An unexpected error occurred.";
