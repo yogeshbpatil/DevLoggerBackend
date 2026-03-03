@@ -1,6 +1,10 @@
+using DevLoggerBackend.Application.Abstractions.Repositories;
+using DevLoggerBackend.Application.Abstractions.Services;
+using DevLoggerBackend.Application.Common.Exceptions;
 using DevLoggerBackend.Application.Features.Auth.Commands;
 using DevLoggerBackend.Application.Features.Auth.Dtos;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DevLoggerBackend.Api.Controllers;
@@ -46,14 +50,27 @@ public class AuthController : ControllerBase
     /// <summary>
     /// JWT-based verification scaffold.
     /// </summary>
+    [Authorize]
     [HttpGet("verify")]
-    [ProducesResponseType(StatusCodes.Status501NotImplemented)]
-    public IActionResult Verify(CancellationToken cancellationToken)
+    public async Task<IActionResult> Verify(
+    [FromServices] IUserRepository userRepository,
+    [FromServices] ICurrentUserService currentUserService,
+    CancellationToken cancellationToken)
     {
-        _ = cancellationToken;
-        return StatusCode(StatusCodes.Status501NotImplemented, new
+        var userId = currentUserService.UserId
+            ?? throw new UnauthorizedException("User is not authenticated.");
+
+        var user = await userRepository.GetByIdAsync(userId, cancellationToken);
+
+        if (user is null)
+            throw new UnauthorizedException("User no longer exists.");
+
+        return Ok(new
         {
-            message = "TODO: Enable JWT authentication and return authenticated user payload."
+            id = user.Id,
+            name = user.Name,
+            email = user.Email,
+            role = user.Role.ToString()
         });
     }
 }

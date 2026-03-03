@@ -21,15 +21,31 @@ public class DailyLogRepository : IDailyLogRepository
             .OrderByDescending(x => x.LogDate)
             .ToListAsync(cancellationToken);
     }
+    public async Task<IReadOnlyList<DailyLog>> GetByUserIdAsync(
+    Guid userId,
+    CancellationToken cancellationToken)
+    {
+        return await _dbContext.DailyLogs
+            .Where(x => x.UserId == userId)
+            .AsNoTracking()
+            .OrderByDescending(x => x.LogDate)
+            .ToListAsync(cancellationToken);
+    }
 
     public Task<DailyLog?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         return _dbContext.DailyLogs.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
-
-    public async Task<IReadOnlyList<DailyLog>> SearchAsync(string? keyword, DateOnly? dateFrom, DateOnly? dateTo, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<DailyLog>> SearchByUserIdAsync(
+    Guid userId,
+    string? keyword,
+    DateOnly? dateFrom,
+    DateOnly? dateTo,
+    CancellationToken cancellationToken)
     {
-        var query = _dbContext.DailyLogs.AsQueryable();
+        var query = _dbContext.DailyLogs
+            .Where(x => x.UserId == userId)
+            .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(keyword))
         {
@@ -46,20 +62,18 @@ public class DailyLogRepository : IDailyLogRepository
         }
 
         if (dateFrom.HasValue)
-        {
             query = query.Where(x => x.LogDate >= dateFrom.Value);
-        }
 
         if (dateTo.HasValue)
-        {
             query = query.Where(x => x.LogDate <= dateTo.Value);
-        }
 
         return await query
             .AsNoTracking()
             .OrderByDescending(x => x.LogDate)
             .ToListAsync(cancellationToken);
     }
+
+   
 
     public async Task AddAsync(DailyLog dailyLog, CancellationToken cancellationToken)
     {
