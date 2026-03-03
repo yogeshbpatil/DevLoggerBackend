@@ -1,6 +1,7 @@
 using DevLoggerBackend.Application.Abstractions.Repositories;
 using DevLoggerBackend.Application.Features.DailyLogs.Queries;
 using DevLoggerBackend.Domain.Entities;
+using DevLoggerBackend.Application.Abstractions.Services;
 using FluentAssertions;
 using Moq;
 
@@ -28,9 +29,19 @@ public class GetAllDailyLogsQueryHandlerTests
         };
 
         var repository = new Mock<IDailyLogRepository>();
-        repository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync(logs);
+        repository.Setup(x => x.GetByUserIdAsync(
+        It.IsAny<Guid>(),
+        It.IsAny<CancellationToken>()))
+    .ReturnsAsync(logs);
+        var currentUserService = new Mock<ICurrentUserService>();
 
-        var handler = new GetAllDailyLogsQueryHandler(repository.Object);
+        currentUserService.Setup(x => x.UserId)
+            .Returns(Guid.NewGuid());
+
+        var handler = new GetAllDailyLogsQueryHandler(
+    repository.Object,
+
+    currentUserService.Object);
 
         var result = await handler.Handle(new GetAllDailyLogsQuery(), CancellationToken.None);
 

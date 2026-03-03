@@ -2,6 +2,7 @@ using DevLoggerBackend.Application.Abstractions.Persistence;
 using DevLoggerBackend.Application.Abstractions.Repositories;
 using DevLoggerBackend.Application.Common.Exceptions;
 using DevLoggerBackend.Application.Features.DailyLogs.Dtos;
+using DevLoggerBackend.Application.Abstractions.Services;
 using MediatR;
 
 namespace DevLoggerBackend.Application.Features.DailyLogs.Commands;
@@ -12,17 +13,21 @@ public sealed class UpdateDailyLogCommandHandler : IRequestHandler<UpdateDailyLo
 {
     private readonly IDailyLogRepository _repository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly ICurrentUserService _currentUserService;
 
-    public UpdateDailyLogCommandHandler(IDailyLogRepository repository, IUnitOfWork unitOfWork)
+    public UpdateDailyLogCommandHandler(IDailyLogRepository repository, IUnitOfWork unitOfWork, ICurrentUserService currentUserService)
     {
         _repository = repository;
         _unitOfWork = unitOfWork;
+        _currentUserService = currentUserService;
     }
 
     public async Task<DailyLogDto> Handle(UpdateDailyLogCommand request, CancellationToken cancellationToken)
     {
+        var userId = _currentUserService.UserId
+     ?? throw new UnauthorizedException("User is not authenticated.");
         var entity = await _repository.GetByIdAsync(request.Id, cancellationToken);
-        if (entity is null)
+        if (entity is null || entity.UserId != userId)
         {
             throw new NotFoundException($"Daily log with id '{request.Id}' not found.");
         }

@@ -10,14 +10,13 @@ public static class WebApplicationExtensions
     public static WebApplication UseApiPipeline(this WebApplication app)
     {
         app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
+
         app.UseCors("FrontendPolicy");
 
-        // TODO: Enable JWT middleware in next auth phase.
-        // app.UseAuthentication();
-        // app.UseAuthorization();
+        app.UseAuthentication();
+        app.UseAuthorization();
 
         app.MapControllers();
-        app.MapHealthChecks("/health");
 
         return app;
     }

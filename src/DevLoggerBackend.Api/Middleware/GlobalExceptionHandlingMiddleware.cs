@@ -25,6 +25,13 @@ public class GlobalExceptionHandlingMiddleware
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception occurred");
+
+            Console.WriteLine("===== FULL ERROR =====");
+            Console.WriteLine(ex.Message);
+            Console.WriteLine(ex.InnerException?.Message);
+            Console.WriteLine(ex.ToString());
+            Console.WriteLine("======================");
+
             await HandleExceptionAsync(context, ex);
         }
     }

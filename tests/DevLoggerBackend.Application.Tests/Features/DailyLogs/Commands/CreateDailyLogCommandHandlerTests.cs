@@ -1,10 +1,12 @@
 using DevLoggerBackend.Application.Abstractions.Persistence;
 using DevLoggerBackend.Application.Abstractions.Repositories;
+using DevLoggerBackend.Application.Abstractions.Services;
 using DevLoggerBackend.Application.Features.DailyLogs.Commands;
 using DevLoggerBackend.Application.Features.DailyLogs.Dtos;
 using DevLoggerBackend.Domain.Entities;
 using DevLoggerBackend.Domain.Enums;
 using FluentAssertions;
+using DevLoggerBackend.Application.Abstractions.Services;
 using Moq;
 
 namespace DevLoggerBackend.Application.Tests.Features.DailyLogs.Commands;
@@ -17,18 +19,16 @@ public class CreateDailyLogCommandHandlerTests
         var repository = new Mock<IDailyLogRepository>();
         var userRepository = new Mock<IUserRepository>();
         var unitOfWork = new Mock<IUnitOfWork>();
+        var currentUserService = new Mock<ICurrentUserService>();
 
-        userRepository.Setup(x => x.GetDefaultUserAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new User
-            {
-                Id = Guid.NewGuid(),
-                Name = "John Doe",
-                Email = "john@example.com",
-                PasswordHash = "hash",
-                Role = UserRole.Developer
-            });
+        currentUserService.Setup(x => x.UserId)
+            .Returns(Guid.NewGuid());
 
-        var handler = new CreateDailyLogCommandHandler(repository.Object, userRepository.Object, unitOfWork.Object);
+        var handler = new CreateDailyLogCommandHandler(
+            repository.Object,
+            userRepository.Object,
+            unitOfWork.Object,
+            currentUserService.Object);
 
         var dto = new CreateDailyLogDto
         {
@@ -41,10 +41,18 @@ public class CreateDailyLogCommandHandlerTests
             GitLink = "https://github.com/example/repo"
         };
 
-        var result = await handler.Handle(new CreateDailyLogCommand(dto), CancellationToken.None);
+        var result = await handler.Handle(
+            new CreateDailyLogCommand(dto),
+            CancellationToken.None);
 
         result.TasksWorked.Should().Be("Implemented API");
-        repository.Verify(x => x.AddAsync(It.IsAny<DailyLog>(), It.IsAny<CancellationToken>()), Times.Once);
-        unitOfWork.Verify(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+
+        repository.Verify(x =>
+            x.AddAsync(It.IsAny<DailyLog>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        unitOfWork.Verify(x =>
+            x.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 }

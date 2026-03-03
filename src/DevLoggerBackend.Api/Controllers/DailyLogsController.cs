@@ -3,9 +3,11 @@ using DevLoggerBackend.Application.Features.DailyLogs.Dtos;
 using DevLoggerBackend.Application.Features.DailyLogs.Queries;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 
 namespace DevLoggerBackend.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class DailyLogsController : ControllerBase
