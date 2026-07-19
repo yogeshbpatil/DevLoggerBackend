@@ -12,6 +12,7 @@ public class AppDbContext : DbContext, IUnitOfWork
 
     public DbSet<User> Users => Set<User>();
     public DbSet<DailyLog> DailyLogs => Set<DailyLog>();
+    public DbSet<Note> Notes => Set<Note>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

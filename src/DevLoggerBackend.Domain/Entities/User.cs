@@ -10,4 +10,5 @@ public class User : BaseEntity
     public string PasswordHash { get; set; } = string.Empty;
     public UserRole Role { get; set; }
     public ICollection<DailyLog> DailyLogs { get; set; } = new List<DailyLog>();
+    public Note? Note { get; set; }
 }

@@ -30,6 +30,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<AppDbContext>());
         services.AddScoped<IDailyLogRepository, DailyLogRepository>();
+        services.AddScoped<INoteRepository, NoteRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IPasswordHasher, BcryptPasswordHasher>();
         services.AddScoped<ITokenService, PlaceholderTokenService>();

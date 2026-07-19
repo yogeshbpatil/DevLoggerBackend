@@ -75,6 +75,34 @@ namespace DevLoggerBackend.Infrastructure.Persistence.Migrations
                     b.ToTable("DailyLogs", (string)null);
                 });
 
+            modelBuilder.Entity("DevLoggerBackend.Domain.Entities.Note", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(100000)
+                        .HasColumnType("character varying(100000)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("Notes", (string)null);
+                });
+
             modelBuilder.Entity("DevLoggerBackend.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -158,6 +186,19 @@ namespace DevLoggerBackend.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("DevLoggerBackend.Domain.Entities.User", b =>
                 {
                     b.Navigation("DailyLogs");
+
+                    b.Navigation("Note");
+                });
+
+            modelBuilder.Entity("DevLoggerBackend.Domain.Entities.Note", b =>
+                {
+                    b.HasOne("DevLoggerBackend.Domain.Entities.User", "User")
+                        .WithOne("Note")
+                        .HasForeignKey("DevLoggerBackend.Domain.Entities.Note", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 #pragma warning restore 612, 618
         }
