@@ -39,9 +39,9 @@ public sealed class CreateDailyLogCommandHandler : IRequestHandler<CreateDailyLo
             Id = Guid.NewGuid(),
             LogDate = parsedDate,
             TasksWorked = request.Payload.TasksWorked,
-            ProblemsFaced = request.Payload.ProblemsFaced,
-            Solutions = request.Payload.Solutions,
-            Learnings = request.Payload.Learnings,
+            ProblemsFaced = request.Payload.ProblemsFaced?.Trim() ?? string.Empty,
+            Solutions = request.Payload.Solutions?.Trim() ?? string.Empty,
+            Learnings = request.Payload.Learnings?.Trim() ?? string.Empty,
             Tips = request.Payload.Tips,
             GitLink = string.IsNullOrWhiteSpace(request.Payload.GitLink) ? null : request.Payload.GitLink,
             UserId = _currentUserService.UserId

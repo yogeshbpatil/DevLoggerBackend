@@ -39,9 +39,9 @@ public sealed class UpdateDailyLogCommandHandler : IRequestHandler<UpdateDailyLo
 
         entity.LogDate = parsedDate;
         entity.TasksWorked = request.Payload.TasksWorked;
-        entity.ProblemsFaced = request.Payload.ProblemsFaced;
-        entity.Solutions = request.Payload.Solutions;
-        entity.Learnings = request.Payload.Learnings;
+        entity.ProblemsFaced = request.Payload.ProblemsFaced?.Trim() ?? string.Empty;
+        entity.Solutions = request.Payload.Solutions?.Trim() ?? string.Empty;
+        entity.Learnings = request.Payload.Learnings?.Trim() ?? string.Empty;
         entity.Tips = request.Payload.Tips;
         entity.GitLink = string.IsNullOrWhiteSpace(request.Payload.GitLink) ? null : request.Payload.GitLink;
         entity.UpdatedAtUtc = DateTime.UtcNow;

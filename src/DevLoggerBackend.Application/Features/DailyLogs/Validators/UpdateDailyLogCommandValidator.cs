@@ -15,9 +15,6 @@ public class UpdateDailyLogCommandValidator : AbstractValidator<UpdateDailyLogCo
             .Must(NotBeFutureDate).WithMessage("logDate must not be in the future.");
 
         RuleFor(x => x.Payload.TasksWorked).NotEmpty();
-        RuleFor(x => x.Payload.ProblemsFaced).NotEmpty();
-        RuleFor(x => x.Payload.Solutions).NotEmpty();
-        RuleFor(x => x.Payload.Learnings).NotEmpty();
 
         RuleFor(x => x.Payload.GitLink)
             .Must(BeValidOptionalUrl)
