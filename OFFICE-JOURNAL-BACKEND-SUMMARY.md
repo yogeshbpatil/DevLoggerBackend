@@ -3,93 +3,100 @@
 ## 1. Project Overview
 
 ### Purpose
-The project is a backend API for a developer journal / office journal application. Its main responsibility is to let authenticated users record daily development activity, search historical entries, and maintain a personal note. The backend is implemented as a .NET 8 ASP.NET Core API using Clean Architecture principles.
+This repository contains the backend API for the Developer Journal / Office Journal application. Its job is to let authenticated users register, log in, verify their current identity, create and manage daily development logs, and keep one personal note. The backend is implemented as a .NET ASP.NET Core API using a Clean Architecture layout and a CQRS-style application layer.
 
-### Business Problem It Solves
-The application helps developers and team members capture:
-- daily work summaries
-- problems encountered
-- solutions applied
-- learnings and tips
-- optional GitHub links
-- a personal note for quick thoughts or reminders
+### Actual Technology Snapshot
+- All project files currently target `net10.0`.
+- The API uses ASP.NET Core controllers, JWT bearer authentication, Serilog, Swagger/OpenAPI, and CORS.
+- The application layer uses MediatR and FluentValidation.
+- Persistence is built with Entity Framework Core and the PostgreSQL provider from Npgsql.
+- Password hashing uses BCrypt.Net-Next.
+- The test project uses xUnit, Moq, FluentAssertions, and Coverlet.
 
-Instead of relying on scattered notes or manual logs, the system provides a structured API for storing and retrieving this information securely.
+### What The System Stores
+The backend persists three business entities:
+- users
+- daily logs
+- notes
 
-### Overall Architecture
-The solution follows a layered Clean Architecture style with four main projects:
-- [src/DevLoggerBackend.Api](src/DevLoggerBackend.Api) – presentation layer, controllers, middleware, configuration, startup
-- [src/DevLoggerBackend.Application](src/DevLoggerBackend.Application) – application logic, CQRS handlers, DTOs, validators, abstractions
-- [src/DevLoggerBackend.Domain](src/DevLoggerBackend.Domain) – domain entities, enums, shared base types
-- [src/DevLoggerBackend.Infrastructure](src/DevLoggerBackend.Infrastructure) – EF Core persistence, repositories, service implementations, dependency registration
+The daily log model captures day-by-day work summaries, blockers, solutions, learnings, tips, and an optional Git link. The note model stores one free-form note per user. The auth flow stores user credentials and a role.
 
-The application uses:
-- ASP.NET Core controllers for HTTP endpoints
-- MediatR for CQRS command/query handling
-- FluentValidation for request validation
-- Entity Framework Core with PostgreSQL for persistence
-- JWT-based authentication
-- Serilog for structured logging
+### Architecture
+The solution is split into four major projects:
+- `src/DevLoggerBackend.Api` for HTTP entry points, middleware, configuration, startup, and controllers
+- `src/DevLoggerBackend.Application` for use cases, command/query handlers, DTOs, validation, abstractions, and shared application behavior
+- `src/DevLoggerBackend.Domain` for entities, enums, and shared base types
+- `src/DevLoggerBackend.Infrastructure` for EF Core, repositories, service implementations, and dependency wiring
 
-### How the Major Components Work Together
-1. A client sends an HTTP request to the API.
-2. The request passes through middleware and authentication.
-3. Controllers forward the request to MediatR.
-4. A validator may reject invalid input before the handler runs.
-5. A handler executes the relevant business rule.
-6. The handler uses repository abstractions and service abstractions.
-7. The infrastructure layer implements those abstractions against EF Core and PostgreSQL.
-8. Results are mapped to DTOs and returned as JSON responses.
+The main runtime flow is:
+1. An HTTP request reaches the API.
+2. Middleware handles cross-cutting concerns and error formatting.
+3. Controllers delegate to MediatR.
+4. Validators run through the MediatR pipeline.
+5. Handlers execute business rules.
+6. Handlers call repository and service abstractions.
+7. Infrastructure implements those abstractions against EF Core and PostgreSQL.
+8. DTOs are returned to the client as JSON.
+
+### Important Behavior Worth Knowing
+- The auth `verify` endpoint is implemented directly in `AuthController`; the `VerifyAuthQuery` type exists but is currently a placeholder and is not used by the controller.
+- Daily log handlers are scoped to the authenticated user through `ICurrentUserService`.
+- The note feature is a one-note-per-user upsert flow.
+- Startup can apply database migrations automatically, and it contains special handling for PostgreSQL authentication failures during development startup.
 
 ---
 
 ## 2. Complete Application Execution Flow
 
 ### Startup Sequence
-When the application starts from [src/DevLoggerBackend.Api/Program.cs](src/DevLoggerBackend.Api/Program.cs):
-1. The web host is created with configuration from environment variables and configuration files.
-2. Serilog is configured for console and file logging.
-3. Application services are registered using [src/DevLoggerBackend.Application/DependencyInjection.cs](src/DevLoggerBackend.Application/DependencyInjection.cs).
-4. Infrastructure services are registered using [src/DevLoggerBackend.Infrastructure/DependencyInjection.cs](src/DevLoggerBackend.Infrastructure/DependencyInjection.cs).
-5. Controllers are enabled.
-6. JWT authentication is configured.
-7. Swagger is enabled for development or when explicitly configured.
-8. CORS is configured for the frontend origins.
-9. The app builds and runs the API pipeline.
-10. Optional database migrations are applied at startup.
+When the app starts in `src/DevLoggerBackend.Api/Program.cs`:
+1. The web host is created.
+2. If the `PORT` environment variable exists, Kestrel binds to `http://0.0.0.0:{PORT}`.
+3. Otherwise the API binds to `http://localhost:5000`.
+4. Serilog is configured from configuration plus explicit console and rolling file sinks.
+5. Application services are registered.
+6. Infrastructure services are registered.
+7. Controllers are added.
+8. JWT bearer authentication is configured from the `Jwt` section in configuration.
+9. Swagger is configured with a bearer security definition and security requirement.
+10. Health checks are registered in DI.
+11. CORS is configured using the allowed frontend origins.
+12. The app is built.
+13. Swagger UI is enabled in development or when `EnableSwaggerInProduction` is true.
+14. In development, the app attempts to open the Swagger URL automatically in the browser after startup.
+15. If `ApplyMigrationsOnStartup` is enabled, migrations are applied before the pipeline runs.
+16. The API pipeline is wired up and the app starts listening.
 
-### Initialization Process
-The startup flow includes:
-- reading configuration from [src/DevLoggerBackend.Api/appsettings.json](src/DevLoggerBackend.Api/appsettings.json) and [src/DevLoggerBackend.Api/appsettings.Development.json](src/DevLoggerBackend.Api/appsettings.Development.json)
-- resolving the PostgreSQL connection string from either `ConnectionStrings:DefaultConnection` or `DATABASE_URL`
-- registering EF Core with Npgsql
-- applying migrations automatically when configured
+### Migration Startup Behavior
+Database migration startup logic is in `WebApplicationExtensions.ApplyDatabaseMigrationsAsync`.
+- The method creates a scope, resolves `AppDbContext`, and calls `Database.MigrateAsync()`.
+- If PostgreSQL returns authentication error `28P01`, the app logs the failure.
+- In development, that authentication failure is swallowed after logging so the app can keep starting.
+- In non-development environments, the same failure is rethrown.
 
-### Request/Response Lifecycle
-A typical request flows like this:
-1. An HTTP request reaches the ASP.NET Core pipeline.
-2. The global exception middleware intercepts errors and formats consistent JSON error responses.
-3. CORS policy is applied.
-4. Authentication and authorization middleware examine the token.
-5. The request is routed to the appropriate controller.
-6. The controller calls MediatR with a command or query.
-7. Validation executes through the MediatR pipeline behavior.
-8. The matching handler performs the business logic.
-9. The handler interacts with repositories and persistence.
-10. The result is mapped to DTOs and returned as an HTTP response.
+### Request Lifecycle
+For a typical request:
+1. The global exception middleware runs first.
+2. CORS is applied.
+3. Authentication runs.
+4. Authorization runs.
+5. The controller action is selected.
+6. The controller sends a command or query to MediatR.
+7. ValidationBehavior runs all registered validators for that request type.
+8. The handler executes the use case.
+9. Repositories perform EF Core reads or writes.
+10. `AppDbContext.SaveChangesAsync` stamps timestamps on all tracked `BaseEntity` entries.
+11. JSON is returned to the client.
 
-### Data Flow Through the System
-- Controllers accept DTO input.
-- Commands/queries carry the intent of the operation.
-- Handlers use repositories.
-- Repositories issue EF Core queries and changes against [src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs](src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs).
-- The context writes data to PostgreSQL.
-- The response is converted to DTOs for the client.
+### Error Handling Flow
+Unhandled exceptions are converted into a consistent JSON response by `GlobalExceptionHandlingMiddleware`.
+- `ValidationException` becomes `400 Bad Request` with a grouped error dictionary.
+- `NotFoundException` becomes `404 Not Found`.
+- `UnauthorizedException` becomes `401 Unauthorized`.
+- `ConflictException` becomes `409 Conflict`.
+- Any other exception becomes `500 Internal Server Error`.
 
-### Cross-Module Communication
-- API layer depends on application layer abstractions and MediatR.
-- Application layer depends on domain entities and abstractions defined in the application project.
-- Infrastructure layer implements those abstractions and is wired in by dependency injection.
+The middleware also logs the exception through `ILogger` and writes a full diagnostic block to the console.
 
 ---
 
@@ -97,623 +104,665 @@ A typical request flows like this:
 
 ### Root Level Files
 
-#### [README.md](README.md)
-- Purpose: Documentation for setup, running, Docker, migration, and deployment.
-- Code present: Markdown instructions and shell commands.
-- Main contents: local run instructions, Docker instructions, EF Core migration commands, frontend integration notes, Render deployment guidance.
-- Execution: Read by developers; not executed as code.
-- Dependencies: None.
+#### `README.md`
+- Project overview and quick-start instructions.
+- Local run commands for restore, build, test, and run.
+- Docker Compose instructions.
+- EF Core migration commands.
+- Next.js frontend environment variable setup.
+- Render deployment notes.
 
-#### [DevLoggerBackend.sln](DevLoggerBackend.sln)
-- Purpose: Visual Studio solution file that groups all application projects and tests.
-- Code present: Project entries and build configurations for API, Application, Domain, Infrastructure, and test projects.
-- Execution: Used by the .NET SDK and Visual Studio to build/test the solution.
+#### `DevLoggerBackend.sln`
+- Solution file that groups the API, Application, Domain, Infrastructure, and test projects.
+- Used by the .NET SDK and Visual Studio for build and test orchestration.
 
-#### [docker-compose.yml](docker-compose.yml)
-- Purpose: Defines a local Docker environment with PostgreSQL and the backend API.
-- Code present: Two services: `postgres` and `api`.
-- Main contents: PostgreSQL container configuration, API container build, environment variables, port mapping, and persisted database volume.
-- Execution: Used by Docker Compose to start the local stack.
-
----
-
-### API Project Documentation
-
-#### [src/DevLoggerBackend.Api/Program.cs](src/DevLoggerBackend.Api/Program.cs)
-- Purpose: Entry point for the web application.
-- Code present: ASP.NET Core host setup, Serilog configuration, dependency registration, JWT auth, Swagger, CORS, database migration application, and the app pipeline.
-- Key classes/functions: none; it contains top-level statements that configure the host.
-- Execution: Runs automatically when the app is launched with `dotnet run` or by Docker.
-- Depends on: [src/DevLoggerBackend.Api/Extensions/WebApplicationExtensions.cs](src/DevLoggerBackend.Api/Extensions/WebApplicationExtensions.cs), [src/DevLoggerBackend.Application/DependencyInjection.cs](src/DevLoggerBackend.Application/DependencyInjection.cs), [src/DevLoggerBackend.Infrastructure/DependencyInjection.cs](src/DevLoggerBackend.Infrastructure/DependencyInjection.cs).
-- Called by: The .NET runtime when the API starts.
-
-#### [src/DevLoggerBackend.Api/Extensions/WebApplicationExtensions.cs](src/DevLoggerBackend.Api/Extensions/WebApplicationExtensions.cs)
-- Purpose: Centralizes API pipeline configuration and startup migration logic.
-- Code present: `UseApiPipeline` and `ApplyDatabaseMigrationsAsync` extension methods.
-- Key classes/functions:
-  - `UseApiPipeline(WebApplication app)` – wires middleware, CORS, auth, authorization, and controllers
-  - `ApplyDatabaseMigrationsAsync(WebApplication app)` – applies EF Core migrations at startup
-- Execution: Called from [src/DevLoggerBackend.Api/Program.cs](src/DevLoggerBackend.Api/Program.cs) during app startup.
-- Depends on: [src/DevLoggerBackend.Api/Middleware/GlobalExceptionHandlingMiddleware.cs](src/DevLoggerBackend.Api/Middleware/GlobalExceptionHandlingMiddleware.cs), [src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs](src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs).
-
-#### [src/DevLoggerBackend.Api/Middleware/GlobalExceptionHandlingMiddleware.cs](src/DevLoggerBackend.Api/Middleware/GlobalExceptionHandlingMiddleware.cs)
-- Purpose: Catches unhandled exceptions and converts them into consistent JSON error responses.
-- Code present: Middleware class with `Invoke` and a private exception handling method.
-- Key classes/functions:
-  - `Invoke(HttpContext context)` – wraps the next middleware and catches exceptions
-  - `HandleExceptionAsync(HttpContext context, Exception exception)` – maps exceptions to HTTP statuses and payloads
-- Execution: Runs for every request before the controller layer.
-- Depends on: [src/DevLoggerBackend.Api/Models/ErrorResponse.cs](src/DevLoggerBackend.Api/Models/ErrorResponse.cs), application exceptions in [src/DevLoggerBackend.Application/Common/Exceptions](src/DevLoggerBackend.Application/Common/Exceptions).
-
-#### [src/DevLoggerBackend.Api/Controllers/AuthController.cs](src/DevLoggerBackend.Api/Controllers/AuthController.cs)
-- Purpose: Exposes authentication endpoints.
-- Code present: endpoints for registration, login, and JWT verification.
-- Key classes/functions:
-  - `Register` – handles account creation
-  - `Login` – authenticates a user and returns a token
-  - `Verify` – validates the current authenticated identity and returns user metadata
-- Execution: Invoked by clients calling `/api/auth/*`.
-- Depends on: application auth commands and DTOs, repositories and current user service abstractions.
-
-#### [src/DevLoggerBackend.Api/Controllers/DailyLogsController.cs](src/DevLoggerBackend.Api/Controllers/DailyLogsController.cs)
-- Purpose: Exposes CRUD and search endpoints for daily logs.
-- Code present: methods for listing, retrieving by id, creating, updating, deleting, and searching logs.
-- Key classes/functions:
-  - `GetAll` – retrieves all logs for the current user
-  - `GetById` – gets one specific log
-  - `Create` – creates a log
-  - `Update` – updates a log
-  - `Delete` – deletes a log
-  - `Search` – filters by keyword and date range
-- Execution: Called via `/api/dailylogs` endpoints.
-- Depends on: command/query types in [src/DevLoggerBackend.Application/Features/DailyLogs](src/DevLoggerBackend.Application/Features/DailyLogs).
-
-#### [src/DevLoggerBackend.Api/Controllers/NotesController.cs](src/DevLoggerBackend.Api/Controllers/NotesController.cs)
-- Purpose: Exposes endpoints for reading and saving the current user’s note.
-- Code present: GET and PUT endpoints.
-- Key classes/functions:
-  - `Get` – retrieves the current user’s note or returns no content
-  - `Save` – creates or updates a note
-- Execution: Called via `/api/notes`.
-- Depends on: notes commands/queries in [src/DevLoggerBackend.Application/Features/Notes](src/DevLoggerBackend.Application/Features/Notes).
-
-#### [src/DevLoggerBackend.Api/Models/ErrorResponse.cs](src/DevLoggerBackend.Api/Models/ErrorResponse.cs)
-- Purpose: Standard JSON error shape used by the global exception middleware.
-- Code present: response properties for status code, message, trace id, and validation errors.
-- Key classes/functions: `ErrorResponse`.
-
-#### [src/DevLoggerBackend.Api/Properties/launchSettings.json](src/DevLoggerBackend.Api/Properties/launchSettings.json)
-- Purpose: Local launch profile for development.
-- Code present: launch settings for the project and Swagger URL.
-- Execution: Used by the .NET CLI when launching in development.
-
-#### [src/DevLoggerBackend.Api/appsettings.json](src/DevLoggerBackend.Api/appsettings.json)
-- Purpose: Main runtime configuration file.
-- Code present: PostgreSQL connection string, JWT settings, allowed CORS origins, Swagger toggle, migration toggle, and Serilog settings.
-- Execution: Loaded by ASP.NET Core configuration at startup.
-
-#### [src/DevLoggerBackend.Api/appsettings.Development.json](src/DevLoggerBackend.Api/appsettings.Development.json)
-- Purpose: Development-specific overrides.
-- Code present: Serilog minimum level override.
-- Execution: Applied in development environments.
-
-#### [src/DevLoggerBackend.Api/Dockerfile](src/DevLoggerBackend.Api/Dockerfile)
-- Purpose: Container build recipe for the API.
-- Code present: multi-stage Docker build for .NET 8, restore and publish steps, container startup command.
-- Execution: Used by Docker Compose and deployment pipelines.
+#### `docker-compose.yml`
+- Defines a local PostgreSQL 16 container and the API container.
+- Uses a persistent volume for Postgres data.
+- Exposes API port `5000` and database port `5432`.
+- Sets `ASPNETCORE_ENVIRONMENT=Development` for the API container.
+- Overrides the API connection string for container networking.
+- Sets the frontend origin entry for local browser use.
 
 ---
 
-### Application Project Documentation
+### API Project
 
-#### [src/DevLoggerBackend.Application/DependencyInjection.cs](src/DevLoggerBackend.Application/DependencyInjection.cs)
-- Purpose: Registers MediatR, validators, and pipeline behavior into the DI container.
-- Code present: `AddApplication(IServiceCollection services)`.
-- Key classes/functions: `AddApplication`.
-- Execution: Called from [src/DevLoggerBackend.Api/Program.cs](src/DevLoggerBackend.Api/Program.cs).
-- Depends on: [src/DevLoggerBackend.Application/Common/Behaviors/ValidationBehavior.cs](src/DevLoggerBackend.Application/Common/Behaviors/ValidationBehavior.cs).
+#### `src/DevLoggerBackend.Api/Program.cs`
+- Entry point for the API.
+- Selects the listening URL from `PORT` or falls back to `http://localhost:5000`.
+- Configures Serilog console and rolling file sinks at `logs/devlogger-.log`.
+- Registers application and infrastructure services.
+- Configures JWT bearer auth and Swagger security definitions.
+- Registers health checks and CORS.
+- Optionally opens Swagger in the browser during development.
+- Optionally applies migrations before the request pipeline starts.
 
-#### Application Abstractions
+#### `src/DevLoggerBackend.Api/Extensions/WebApplicationExtensions.cs`
+- Provides `UseApiPipeline()` and `ApplyDatabaseMigrationsAsync()`.
+- `UseApiPipeline()` wires the global exception middleware, CORS, authentication, authorization, and controller mapping.
+- `ApplyDatabaseMigrationsAsync()` handles startup migration execution and the special PostgreSQL auth failure path.
 
-##### [src/DevLoggerBackend.Application/Abstractions/Persistence/IUnitOfWork.cs](src/DevLoggerBackend.Application/Abstractions/Persistence/IUnitOfWork.cs)
-- Purpose: Defines a unit-of-work contract for saving changes.
-- Code present: `SaveChangesAsync` method.
+#### `src/DevLoggerBackend.Api/Middleware/GlobalExceptionHandlingMiddleware.cs`
+- Wraps the request pipeline in a try/catch.
+- Logs unhandled exceptions.
+- Emits a console debug block with the exception text and inner exception text.
+- Converts known application exceptions into structured JSON error responses.
 
-##### [src/DevLoggerBackend.Application/Abstractions/Repositories/IDailyLogRepository.cs](src/DevLoggerBackend.Application/Abstractions/Repositories/IDailyLogRepository.cs)
-- Purpose: Repository abstraction for daily logs.
-- Code present: methods to read, search, add, update, and remove daily logs.
+#### `src/DevLoggerBackend.Api/Models/ErrorResponse.cs`
+- Shared error payload returned by the middleware.
+- Contains `StatusCode`, `Message`, `TraceId`, and optional `Errors`.
+- `Errors` is a dictionary keyed by field name with an array of messages.
 
-##### [src/DevLoggerBackend.Application/Abstractions/Repositories/INoteRepository.cs](src/DevLoggerBackend.Application/Abstractions/Repositories/INoteRepository.cs)
-- Purpose: Repository abstraction for notes.
-- Code present: methods to get a note by user and add a new note.
+#### `src/DevLoggerBackend.Api/Controllers/AuthController.cs`
+- Routes under `api/auth`.
+- `POST /api/auth/register` creates a new account.
+- `POST /api/auth/login` authenticates a user and returns a token plus user profile data.
+- `GET /api/auth/verify` is protected by `[Authorize]` and returns the current authenticated user.
+- The verify action resolves `IUserRepository` and `ICurrentUserService` directly from DI instead of using `VerifyAuthQuery`.
+- Registration returns `201 Created` with a simple success message.
 
-##### [src/DevLoggerBackend.Application/Abstractions/Repositories/IUserRepository.cs](src/DevLoggerBackend.Application/Abstractions/Repositories/IUserRepository.cs)
-- Purpose: Repository abstraction for users.
-- Code present: methods for adding users, finding by email/id, and getting a default user.
+#### `src/DevLoggerBackend.Api/Controllers/DailyLogsController.cs`
+- Routes under `api/dailylogs`.
+- Protected by `[Authorize]` at the controller level.
+- `GET /api/dailylogs` returns the current user's logs ordered by log date descending.
+- `GET /api/dailylogs/{id}` returns one log for the current user.
+- `POST /api/dailylogs` creates a new log and returns `201 Created` with `CreatedAtAction`.
+- `PUT /api/dailylogs/{id}` updates an existing log owned by the current user.
+- `DELETE /api/dailylogs/{id}` deletes a log owned by the current user.
+- `POST /api/dailylogs/search` performs keyword and optional date-range search.
 
-##### [src/DevLoggerBackend.Application/Abstractions/Services/ICurrentUserService.cs](src/DevLoggerBackend.Application/Abstractions/Services/ICurrentUserService.cs)
-- Purpose: Exposes the currently authenticated user id.
-- Code present: `UserId` property.
+#### `src/DevLoggerBackend.Api/Controllers/NotesController.cs`
+- Routes under `api/notes`.
+- Protected by `[Authorize]`.
+- `GET /api/notes` returns the current user's note or `204 No Content` when no note exists.
+- `PUT /api/notes` creates the note when missing or updates it when present.
 
-##### [src/DevLoggerBackend.Application/Abstractions/Services/IPasswordHasher.cs](src/DevLoggerBackend.Application/Abstractions/Services/IPasswordHasher.cs)
-- Purpose: Smooths over password hashing implementation details.
-- Code present: `Hash` and `Verify` methods.
+#### `src/DevLoggerBackend.Api/appsettings.json`
+- Main runtime configuration.
+- Contains the default PostgreSQL connection string.
+- Contains JWT issuer, audience, key, and expiry minutes.
+- Contains CORS allowed origins.
+- Enables Swagger in production.
+- Enables automatic migrations on startup.
+- Contains Serilog logging rules.
+- The checked-in values include local development secrets, so this file is source-sensitive.
 
-##### [src/DevLoggerBackend.Application/Abstractions/Services/ITokenService.cs](src/DevLoggerBackend.Application/Abstractions/Services/ITokenService.cs)
-- Purpose: Defines token generation for authentication.
-- Code present: `GenerateToken(User user)`.
+#### `src/DevLoggerBackend.Api/appsettings.Development.json`
+- Development-only Serilog override.
+- Lowers the default log level to `Debug`.
 
-#### Common Application Infrastructure
+#### `src/DevLoggerBackend.Api/Properties/launchSettings.json`
+- Launch profile for local development.
+- Uses `http://localhost:5000`.
+- Opens the browser to `/swagger`.
+- Sets `ASPNETCORE_ENVIRONMENT=Development`.
 
-##### [src/DevLoggerBackend.Application/Common/Behaviors/ValidationBehavior.cs](src/DevLoggerBackend.Application/Common/Behaviors/ValidationBehavior.cs)
-- Purpose: A MediatR pipeline behavior that validates requests before handlers run.
-- Code present: `ValidationBehavior<TRequest, TResponse>` that runs all validators and throws `ValidationException` on failures.
-- Execution: Invoked automatically for commands/queries because it is registered as a pipeline behavior.
+#### `src/DevLoggerBackend.Api/Dockerfile`
+- Multi-stage Docker build for the API.
+- Restores, publishes, and runs the app in a .NET container.
+- Designed to work with Docker Compose and deployment platforms.
 
-##### [src/DevLoggerBackend.Application/Common/Exceptions/ConflictException.cs](src/DevLoggerBackend.Application/Common/Exceptions/ConflictException.cs)
-- Purpose: Signals a conflict such as duplicate registration data.
-
-##### [src/DevLoggerBackend.Application/Common/Exceptions/NotFoundException.cs](src/DevLoggerBackend.Application/Common/Exceptions/NotFoundException.cs)
-- Purpose: Signals that a resource was not found.
-
-##### [src/DevLoggerBackend.Application/Common/Exceptions/UnauthorizedException.cs](src/DevLoggerBackend.Application/Common/Exceptions/UnauthorizedException.cs)
-- Purpose: Signals invalid or missing authentication.
-
-##### [src/DevLoggerBackend.Application/Common/Models/PagedResult.cs](src/DevLoggerBackend.Application/Common/Models/PagedResult.cs)
-- Purpose: Generic pagination model placeholder for future paging support.
-- Code present: items, total count, page number, and page size.
-
-#### Authentication Feature
-
-##### [src/DevLoggerBackend.Application/Features/Auth/Commands/RegisterCommand.cs](src/DevLoggerBackend.Application/Features/Auth/Commands/RegisterCommand.cs)
-- Purpose: Implements user registration.
-- Code present: `RegisterCommand` record and `RegisterCommandHandler`.
-- Key behavior: checks for duplicate email, hashes the password, creates a new `User`, saves it via the unit of work, and returns `Unit.Value`.
-- Depends on: [src/DevLoggerBackend.Application/Abstractions/Repositories/IUserRepository.cs](src/DevLoggerBackend.Application/Abstractions/Repositories/IUserRepository.cs), [src/DevLoggerBackend.Application/Abstractions/Services/IPasswordHasher.cs](src/DevLoggerBackend.Application/Abstractions/Services/IPasswordHasher.cs), [src/DevLoggerBackend.Application/Abstractions/Persistence/IUnitOfWork.cs](src/DevLoggerBackend.Application/Abstractions/Persistence/IUnitOfWork.cs).
-
-##### [src/DevLoggerBackend.Application/Features/Auth/Commands/LoginCommand.cs](src/DevLoggerBackend.Application/Features/Auth/Commands/LoginCommand.cs)
-- Purpose: Implements login logic.
-- Code present: `LoginCommand` record and `LoginCommandHandler`.
-- Key behavior: finds the user by email, verifies the password, and returns a token plus simplified user info.
-- Depends on: repository, password hasher, token service.
-
-##### [src/DevLoggerBackend.Application/Features/Auth/Dtos/LoginRequestDto.cs](src/DevLoggerBackend.Application/Features/Auth/Dtos/LoginRequestDto.cs)
-- Purpose: DTO for incoming login payload.
-
-##### [src/DevLoggerBackend.Application/Features/Auth/Dtos/LoginResponseDto.cs](src/DevLoggerBackend.Application/Features/Auth/Dtos/LoginResponseDto.cs)
-- Purpose: DTO for login response containing the user object and token.
-
-##### [src/DevLoggerBackend.Application/Features/Auth/Dtos/RegisterRequestDto.cs](src/DevLoggerBackend.Application/Features/Auth/Dtos/RegisterRequestDto.cs)
-- Purpose: DTO for the registration request.
-
-##### [src/DevLoggerBackend.Application/Features/Auth/Dtos/UserDto.cs](src/DevLoggerBackend.Application/Features/Auth/Dtos/UserDto.cs)
-- Purpose: DTO for returning user profile information.
-
-##### [src/DevLoggerBackend.Application/Features/Auth/Validators/RegisterCommandValidator.cs](src/DevLoggerBackend.Application/Features/Auth/Validators/RegisterCommandValidator.cs)
-- Purpose: Validates registration input.
-- Code present: rules for name length, email format, password length, and password confirmation matching.
-
-##### [src/DevLoggerBackend.Application/Features/Auth/Validators/LoginCommandValidator.cs](src/DevLoggerBackend.Application/Features/Auth/Validators/LoginCommandValidator.cs)
-- Purpose: Validates login requests.
-
-##### [src/DevLoggerBackend.Application/Features/Auth/Queries/VerifyAuthQuery.cs](src/DevLoggerBackend.Application/Features/Auth/Queries/VerifyAuthQuery.cs)
-- Purpose: Placeholder query for auth verification.
-- Code present: a query and handler that currently returns `null` with a TODO comment.
-- Note: It is not currently wired to use JWT claims or repository-based user loading.
-
-#### Daily Logs Feature
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Commands/CreateDailyLogCommand.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Commands/CreateDailyLogCommand.cs)
-- Purpose: Creates a new daily log entry.
-- Code present: `CreateDailyLogCommand` record and handler.
-- Key behavior: parses the `logDate`, creates a `DailyLog` entity, assigns the current user id, saves it, and returns a DTO.
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Commands/UpdateDailyLogCommand.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Commands/UpdateDailyLogCommand.cs)
-- Purpose: Updates an existing daily log entry.
-- Key behavior: loads the existing entity, checks ownership, parses the date, updates fields, and saves changes.
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Commands/DeleteDailyLogCommand.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Commands/DeleteDailyLogCommand.cs)
-- Purpose: Deletes a daily log entry.
-- Key behavior: verifies that the current user owns the log, removes it, and saves changes.
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Queries/GetAllDailyLogsQuery.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Queries/GetAllDailyLogsQuery.cs)
-- Purpose: Retrieves all logs for the current user.
-- Key behavior: loads logs from the repository and maps them to DTOs.
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Queries/GetDailyLogByIdQuery.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Queries/GetDailyLogByIdQuery.cs)
-- Purpose: Retrieves a single log by id.
-- Key behavior: validates ownership before returning the entity DTO.
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Queries/SearchDailyLogsQuery.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Queries/SearchDailyLogsQuery.cs)
-- Purpose: Searches logs by keyword and date range.
-- Key behavior: parses the dates and calls the repository’s search method.
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Dtos/CreateDailyLogDto.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Dtos/CreateDailyLogDto.cs)
-- Purpose: Input DTO for creating or updating a daily log.
-- Code present: date, task summary, problems, solutions, learnings, tips, and optional Git link fields.
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Dtos/DailyLogDto.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Dtos/DailyLogDto.cs)
-- Purpose: Output DTO for daily log responses.
-- Code present: a `FromEntity` factory that maps the domain entity to DTO fields.
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Dtos/SearchDailyLogsRequestDto.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Dtos/SearchDailyLogsRequestDto.cs)
-- Purpose: DTO for search input with optional keyword and date fields.
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Validators/CreateDailyLogCommandValidator.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Validators/CreateDailyLogCommandValidator.cs)
-- Purpose: Validates daily log creation.
-- Key rules: valid date, non-future date, non-empty tasks worked, optional valid URL for GitLink.
-
-##### [src/DevLoggerBackend.Application/Features/DailyLogs/Validators/UpdateDailyLogCommandValidator.cs](src/DevLoggerBackend.Application/Features/DailyLogs/Validators/UpdateDailyLogCommandValidator.cs)
-- Purpose: Validates the update request.
-
-#### Notes Feature
-
-##### [src/DevLoggerBackend.Application/Features/Notes/Commands/SaveNoteCommand.cs](src/DevLoggerBackend.Application/Features/Notes/Commands/SaveNoteCommand.cs)
-- Purpose: Saves a user note.
-- Key behavior: retrieves the user’s note; creates a new one if absent; otherwise updates it; persists the change.
-
-##### [src/DevLoggerBackend.Application/Features/Notes/Queries/GetNoteQuery.cs](src/DevLoggerBackend.Application/Features/Notes/Queries/GetNoteQuery.cs)
-- Purpose: Retrieves the current user’s note.
-
-##### [src/DevLoggerBackend.Application/Features/Notes/Dtos/NoteDto.cs](src/DevLoggerBackend.Application/Features/Notes/Dtos/NoteDto.cs)
-- Purpose: DTO for notes with `Id`, `Content`, and timestamp.
-
-##### [src/DevLoggerBackend.Application/Features/Notes/Validators/SaveNoteCommandValidator.cs](src/DevLoggerBackend.Application/Features/Notes/Validators/SaveNoteCommandValidator.cs)
-- Purpose: Validates note content length.
+#### `src/DevLoggerBackend.Api/DevLoggerBackend.Api.csproj`
+- Targets `net10.0`.
+- Enables nullable reference types and implicit usings.
+- Generates XML documentation files.
+- References JWT bearer auth, EF Core design, Serilog sinks, Swagger, and JWT token packages.
+- References the Application and Infrastructure projects.
 
 ---
 
-### Domain Project Documentation
+### Application Project
 
-#### [src/DevLoggerBackend.Domain/Common/BaseEntity.cs](src/DevLoggerBackend.Domain/Common/BaseEntity.cs)
-- Purpose: Shared base class for all persisted domain entities.
-- Code present: `Id`, `CreatedAtUtc`, `UpdatedAtUtc` properties.
+#### `src/DevLoggerBackend.Application/DependencyInjection.cs`
+- Registers MediatR handlers from the application assembly.
+- Registers all FluentValidation validators from the same assembly.
+- Adds `ValidationBehavior<,>` as the MediatR pipeline behavior.
 
-#### [src/DevLoggerBackend.Domain/Entities/User.cs](src/DevLoggerBackend.Domain/Entities/User.cs)
-- Purpose: Represents an authenticated user.
-- Code present: `Name`, `Email`, `PasswordHash`, `Role`, `DailyLogs`, and `Note` navigation properties.
+#### `src/DevLoggerBackend.Application/Abstractions/Persistence/IUnitOfWork.cs`
+- Defines `SaveChangesAsync`.
+- Implemented by `AppDbContext`.
 
-#### [src/DevLoggerBackend.Domain/Entities/DailyLog.cs](src/DevLoggerBackend.Domain/Entities/DailyLog.cs)
-- Purpose: Represents a daily log entry.
-- Code present: date, text fields, optional Git link, and `UserId`/`User` relationships.
+#### `src/DevLoggerBackend.Application/Abstractions/Repositories/IDailyLogRepository.cs`
+- Declares read, search, add, update, and remove operations for daily logs.
+- Includes `GetAllAsync`, `GetByUserIdAsync`, `GetByIdAsync`, and `SearchByUserIdAsync`.
 
-#### [src/DevLoggerBackend.Domain/Entities/Note.cs](src/DevLoggerBackend.Domain/Entities/Note.cs)
-- Purpose: Represents a single note belonging to a user.
-- Code present: `Content`, `UserId`, and navigation property.
+#### `src/DevLoggerBackend.Application/Abstractions/Repositories/INoteRepository.cs`
+- Declares note lookup by user and insert.
+- The note feature currently relies on a one-note-per-user model.
 
-#### [src/DevLoggerBackend.Domain/Enums/UserRole.cs](src/DevLoggerBackend.Domain/Enums/UserRole.cs)
-- Purpose: Defines user roles used in the system.
-- Code present: `Developer`, `SeniorDeveloper`, `TeamLead`, and `Manager`.
+#### `src/DevLoggerBackend.Application/Abstractions/Repositories/IUserRepository.cs`
+- Declares add, lookup by email, lookup by id, and `GetDefaultUserAsync`.
+- `GetDefaultUserAsync` exists but is not currently used by the request handlers.
+
+#### `src/DevLoggerBackend.Application/Abstractions/Services/ICurrentUserService.cs`
+- Exposes the current authenticated user id as `Guid?`.
+
+#### `src/DevLoggerBackend.Application/Abstractions/Services/IPasswordHasher.cs`
+- Abstracts hashing and verification.
+
+#### `src/DevLoggerBackend.Application/Abstractions/Services/ITokenService.cs`
+- Abstracts token generation for auth.
+
+#### `src/DevLoggerBackend.Application/Common/Behaviors/ValidationBehavior.cs`
+- Runs every validator registered for the incoming request type.
+- Uses a shared validation context for all validators of the same request.
+- Aggregates all failures and throws `ValidationException` when any exist.
+
+#### `src/DevLoggerBackend.Application/Common/Exceptions/ConflictException.cs`
+- Used when a request conflicts with current state, such as duplicate registration.
+
+#### `src/DevLoggerBackend.Application/Common/Exceptions/NotFoundException.cs`
+- Used when a requested resource is missing or inaccessible.
+
+#### `src/DevLoggerBackend.Application/Common/Exceptions/UnauthorizedException.cs`
+- Used when authentication is missing, invalid, or no longer resolvable.
+
+#### `src/DevLoggerBackend.Application/Common/Models/PagedResult.cs`
+- Generic paging container with `Items`, `TotalCount`, `PageNumber`, and `PageSize`.
+- Present in the codebase even though current handlers do not yet return paged results.
+
+#### `src/DevLoggerBackend.Application/Features/Auth/Commands/RegisterCommand.cs`
+- `RegisterCommand` carries name, email, password, and confirm password.
+- Handler checks for an existing email and throws `ConflictException` on duplicates.
+- The new user is trimmed, email-normalized to lowercase, assigned the `Developer` role, and persisted.
+- Password hashing is delegated to `IPasswordHasher`.
+- The handler saves through `IUnitOfWork`.
+
+#### `src/DevLoggerBackend.Application/Features/Auth/Commands/LoginCommand.cs`
+- `LoginCommand` carries email and password.
+- Handler loads the user by email and verifies the password.
+- Invalid credentials throw `UnauthorizedException`.
+- The response contains a `UserDto` plus a JWT token.
+- Role display formatting is special-cased so `SeniorDeveloper` becomes `Senior Developer` and `TeamLead` becomes `Team Lead`.
+
+#### `src/DevLoggerBackend.Application/Features/Auth/Queries/VerifyAuthQuery.cs`
+- Placeholder query returning `UserDto?`.
+- Current handler always returns `null`.
+- The code comment explicitly says JWT claims should eventually be used to load the authenticated profile.
+- This query is not used by `AuthController.Verify` at the moment.
+
+#### `src/DevLoggerBackend.Application/Features/Auth/Dtos/LoginRequestDto.cs`
+- Login payload with `Email` and `Password`.
+
+#### `src/DevLoggerBackend.Application/Features/Auth/Dtos/LoginResponseDto.cs`
+- Login response with `User` and `Token`.
+
+#### `src/DevLoggerBackend.Application/Features/Auth/Dtos/RegisterRequestDto.cs`
+- Registration payload with `Name`, `Email`, `Password`, and `ConfirmPassword`.
+
+#### `src/DevLoggerBackend.Application/Features/Auth/Dtos/UserDto.cs`
+- Lightweight profile DTO containing `Id`, `Name`, `Email`, and `Role`.
+
+#### `src/DevLoggerBackend.Application/Features/Auth/Validators/RegisterCommandValidator.cs`
+- Requires name to be present and at least 2 characters long.
+- Requires a valid email address.
+- Requires password to be present and at least 8 characters long.
+- Requires confirm password to be present and to match the password.
+
+#### `src/DevLoggerBackend.Application/Features/Auth/Validators/LoginCommandValidator.cs`
+- Requires a non-empty email.
+- Requires a valid email format.
+- Requires a non-empty password.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Commands/CreateDailyLogCommand.cs`
+- `CreateDailyLogCommand` wraps `CreateDailyLogDto`.
+- Handler parses `LogDate` with `DateOnly.TryParse` and throws a validation exception when parsing fails.
+- The log is owned by the current authenticated user.
+- `ProblemsFaced`, `Solutions`, and `Learnings` are trimmed before storage.
+- `GitLink` is set to `null` when blank.
+- `TasksWorked` and `Tips` are stored as sent.
+- The handler currently injects `IUserRepository`, but it does not use it.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Commands/UpdateDailyLogCommand.cs`
+- Updates an existing log by id using the same DTO shape as create.
+- Verifies the current user owns the record before updating it.
+- Throws `NotFoundException` when the log is missing or belongs to another user.
+- Uses the same date parsing and field normalization rules as create.
+- Updates `UpdatedAtUtc` and persists through `IUnitOfWork`.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Commands/DeleteDailyLogCommand.cs`
+- Deletes a daily log by id.
+- Enforces ownership by comparing the record's `UserId` against the current user.
+- Throws `NotFoundException` if the record is absent or belongs to someone else.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Queries/GetAllDailyLogsQuery.cs`
+- Returns all daily logs for the authenticated user only.
+- Despite the name, it does not return logs for every user in the system.
+- Maps entities to `DailyLogDto`.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Queries/GetDailyLogByIdQuery.cs`
+- Returns one log for the authenticated user by id.
+- Enforces ownership and throws `NotFoundException` for missing or foreign records.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Queries/SearchDailyLogsQuery.cs`
+- Accepts `Keyword`, `DateFrom`, and `DateTo` as strings.
+- Converts date strings to `DateOnly?`.
+- Invalid or blank search date values are treated as `null` rather than causing an exception.
+- Search is always scoped to the current user.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Dtos/CreateDailyLogDto.cs`
+- Input DTO with `LogDate`, `TasksWorked`, `ProblemsFaced`, `Solutions`, `Learnings`, `Tips`, and optional `GitLink`.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Dtos/DailyLogDto.cs`
+- Output DTO with id, log date, text fields, optional Git link, created time, and updated time.
+- Dates are formatted as `yyyy-MM-dd`.
+- Timestamps are serialized with the round-trip `O` format.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Dtos/SearchDailyLogsRequestDto.cs`
+- Search payload with optional keyword and date bounds.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Validators/CreateDailyLogCommandValidator.cs`
+- Requires a non-empty log date.
+- Requires the log date to parse as `DateOnly`.
+- Requires the log date not to be in the future.
+- Requires `TasksWorked` to be non-empty.
+- Validates `GitLink` as an absolute HTTP or HTTPS URL when present.
+
+#### `src/DevLoggerBackend.Application/Features/DailyLogs/Validators/UpdateDailyLogCommandValidator.cs`
+- Mirrors the create validator.
+- Also requires the command id to be non-empty.
+
+#### `src/DevLoggerBackend.Application/Features/Notes/Commands/SaveNoteCommand.cs`
+- Upsert command for the current user note.
+- If no note exists, the handler creates one.
+- If a note already exists, the handler updates it in place.
+- Ownership comes from `ICurrentUserService`.
+
+#### `src/DevLoggerBackend.Application/Features/Notes/Queries/GetNoteQuery.cs`
+- Retrieves the current user's note.
+- Returns `null` when no note exists.
+
+#### `src/DevLoggerBackend.Application/Features/Notes/Dtos/NoteDto.cs`
+- Immutable note response containing `Id`, `Content`, and `UpdatedAtUtc`.
+- Also defines `SaveNoteDto` as the input record with just `Content`.
+
+#### `src/DevLoggerBackend.Application/Features/Notes/Validators/SaveNoteCommandValidator.cs`
+- Requires note content to be non-null.
+- Caps content at 100000 characters.
+- Blank strings are permitted because the rule checks nullability, not emptiness.
+
+#### `src/DevLoggerBackend.Application/DevLoggerBackend.Application.csproj`
+- Targets `net10.0`.
+- References MediatR, FluentValidation, and the dependency injection abstractions package.
+- References the Domain project.
 
 ---
 
-### Infrastructure Project Documentation
+### Domain Project
 
-#### [src/DevLoggerBackend.Infrastructure/DependencyInjection.cs](src/DevLoggerBackend.Infrastructure/DependencyInjection.cs)
-- Purpose: Registers infrastructure services into dependency injection.
-- Code present: adds `AppDbContext`, repository implementations, password hasher, token service, `IHttpContextAccessor`, and current user service.
-- Key behavior: resolves the PostgreSQL connection string from configuration and builds it from a `DATABASE_URL` when present.
-- Depends on: [src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs](src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs).
+#### `src/DevLoggerBackend.Domain/Common/BaseEntity.cs`
+- Shared base type for persisted entities.
+- Contains `Id`, `CreatedAtUtc`, and `UpdatedAtUtc`.
 
-#### [src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs](src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs)
-- Purpose: EF Core database context for the entire application.
-- Code present: `DbSet` properties for `Users`, `DailyLogs`, and `Notes`; timestamp management on save; model configuration application; seed data for demo users.
-- Key classes/functions:
-  - `SaveChangesAsync` – automatically sets created/updated timestamps
-  - `OnModelCreating` – applies entity configurations and seeds initial users
-- Execution: Used by repositories and the startup migration process.
-- Depends on: entity configurations in [src/DevLoggerBackend.Infrastructure/Persistence/Configurations](src/DevLoggerBackend.Infrastructure/Persistence/Configurations).
+#### `src/DevLoggerBackend.Domain/Entities/User.cs`
+- User entity with name, email, password hash, role, daily log collection, and optional note.
 
-#### Configuration Files
+#### `src/DevLoggerBackend.Domain/Entities/DailyLog.cs`
+- Daily work log entity with `DateOnly LogDate`.
+- Stores tasks worked, problems faced, solutions, learnings, tips, optional Git link, and user relationship fields.
 
-##### [src/DevLoggerBackend.Infrastructure/Persistence/Configurations/UserConfiguration.cs](src/DevLoggerBackend.Infrastructure/Persistence/Configurations/UserConfiguration.cs)
-- Purpose: Maps the `User` entity to the `Users` table.
-- Code present: table name, key, required fields, and unique email index.
+#### `src/DevLoggerBackend.Domain/Entities/Note.cs`
+- One note per user, with content and user relationship fields.
 
-##### [src/DevLoggerBackend.Infrastructure/Persistence/Configurations/DailyLogConfiguration.cs](src/DevLoggerBackend.Infrastructure/Persistence/Configurations/DailyLogConfiguration.cs)
-- Purpose: Maps the `DailyLog` entity to the `DailyLogs` table.
-- Code present: required text fields, default tips value, Git link length, foreign key to `Users`, and an index on `LogDate`.
+#### `src/DevLoggerBackend.Domain/Enums/UserRole.cs`
+- Role enum values are `Developer`, `SeniorDeveloper`, `TeamLead`, and `Manager`.
+- New registrations default to `Developer`.
 
-##### [src/DevLoggerBackend.Infrastructure/Persistence/Configurations/NoteConfiguration.cs](src/DevLoggerBackend.Infrastructure/Persistence/Configurations/NoteConfiguration.cs)
-- Purpose: Maps the `Note` entity to the `Notes` table.
-- Code present: max length for content, unique user index, and one-to-one relationship to `User`.
+#### `src/DevLoggerBackend.Domain/DevLoggerBackend.Domain.csproj`
+- Targets `net10.0`.
+- Uses nullable reference types and implicit usings.
 
-#### Repositories
+---
 
-##### [src/DevLoggerBackend.Infrastructure/Repositories/DailyLogRepository.cs](src/DevLoggerBackend.Infrastructure/Repositories/DailyLogRepository.cs)
-- Purpose: EF Core implementation of daily log persistence.
-- Code present: methods to get all logs, get by user, get by id, search, add, update, and remove.
-- Key behavior: the search method builds a query by keyword and date range and orders by log date descending.
-- Depends on: [src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs](src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs).
+### Infrastructure Project
 
-##### [src/DevLoggerBackend.Infrastructure/Repositories/NoteRepository.cs](src/DevLoggerBackend.Infrastructure/Repositories/NoteRepository.cs)
-- Purpose: EF Core implementation of note persistence.
-- Code present: lookup by user and insertion of new notes.
+#### `src/DevLoggerBackend.Infrastructure/DependencyInjection.cs`
+- Resolves the PostgreSQL connection string from `DATABASE_URL` first and then from `ConnectionStrings:DefaultConnection`.
+- Throws an exception if neither is configured.
+- Registers `AppDbContext` with retry-on-failure enabled for Npgsql.
+- Registers the repository implementations.
+- Registers BCrypt password hashing.
+- Registers the token service.
+- Registers `IHttpContextAccessor` and current user resolution.
 
-##### [src/DevLoggerBackend.Infrastructure/Repositories/UserRepository.cs](src/DevLoggerBackend.Infrastructure/Repositories/UserRepository.cs)
-- Purpose: EF Core implementation for user access.
-- Code present: add, find by email/id, and get the first/default user.
+#### `src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs`
+- Implements both `DbContext` and `IUnitOfWork`.
+- Exposes `DbSet<User>`, `DbSet<DailyLog>`, and `DbSet<Note>`.
+- Overrides `SaveChangesAsync` to stamp created and updated timestamps on every tracked `BaseEntity`.
+- Applies all entity configurations from the infrastructure assembly.
+- Seeds three demo users during model creation.
 
-#### Services
+#### `src/DevLoggerBackend.Infrastructure/Persistence/Configurations/UserConfiguration.cs`
+- Maps `User` to the `Users` table.
+- Requires name, email, and password hash.
+- Limits name to 200 characters and email to 320 characters.
+- Enforces a unique index on email.
 
-##### [src/DevLoggerBackend.Infrastructure/Services/BcryptPasswordHasher.cs](src/DevLoggerBackend.Infrastructure/Services/BcryptPasswordHasher.cs)
-- Purpose: Implements password hashing and verification with BCrypt.
-- Code present: wraps `BCrypt.Net.BCrypt` methods.
+#### `src/DevLoggerBackend.Infrastructure/Persistence/Configurations/DailyLogConfiguration.cs`
+- Maps `DailyLog` to `DailyLogs`.
+- Requires the text fields.
+- Gives `Tips` a default empty string.
+- Limits `GitLink` to 2048 characters.
+- Configures a cascade relationship to `User`.
+- Adds an index on `LogDate`.
 
-##### [src/DevLoggerBackend.Infrastructure/Services/CurrentUserService.cs](src/DevLoggerBackend.Infrastructure/Services/CurrentUserService.cs)
-- Purpose: Reads the authenticated user id from the current HTTP context.
-- Code present: uses `IHttpContextAccessor` and `ClaimTypes.NameIdentifier`.
+#### `src/DevLoggerBackend.Infrastructure/Persistence/Configurations/NoteConfiguration.cs`
+- Maps `Note` to `Notes`.
+- Requires content and caps it at 100000 characters.
+- Enforces a unique `UserId` index.
+- Configures a one-to-one cascade relationship to `User`.
 
-##### [src/DevLoggerBackend.Infrastructure/Services/PlaceholderTokenService.cs](src/DevLoggerBackend.Infrastructure/Services/PlaceholderTokenService.cs)
-- Purpose: Generates JWTs for authenticated users.
-- Code present: builds a `JwtSecurityToken` using configuration values and returns the serialized token.
-- Note: The class name suggests a placeholder implementation, and the project currently uses it directly for production-style auth behavior.
+#### `src/DevLoggerBackend.Infrastructure/Repositories/DailyLogRepository.cs`
+- EF Core implementation of daily log storage.
+- `GetAllAsync` returns every log ordered by log date descending, but current handlers do not use this method.
+- `GetByUserIdAsync` returns the current user's logs ordered descending.
+- `GetByIdAsync` is used for ownership checks and edit/delete flows.
+- `SearchByUserIdAsync` filters by user, keyword, and optional date range, then orders descending.
+- The keyword search matches across every text field, the Git link, and the date string.
+- Read operations use `AsNoTracking()` where appropriate.
 
-#### Migrations
+#### `src/DevLoggerBackend.Infrastructure/Repositories/NoteRepository.cs`
+- Looks up a note by user id with `SingleOrDefaultAsync`.
+- Adds new notes.
+- The one-note-per-user rule is reinforced by the repository and by the database unique index.
 
-##### [src/DevLoggerBackend.Infrastructure/Persistence/Migrations/20260227170537_InitialCreate.cs](src/DevLoggerBackend.Infrastructure/Persistence/Migrations/20260227170537_InitialCreate.cs)
-- Purpose: Initial EF Core migration.
-- Code present: creates `Users` and `DailyLogs` tables, adds indexes, and seeds initial demo users.
+#### `src/DevLoggerBackend.Infrastructure/Repositories/UserRepository.cs`
+- Adds users.
+- Looks up users by email with normalized lowercase comparison.
+- Looks up users by id.
+- `GetDefaultUserAsync` returns the first user ordered by email.
 
-##### [src/DevLoggerBackend.Infrastructure/Persistence/Migrations/20260719130000_AddNotes.cs](src/DevLoggerBackend.Infrastructure/Persistence/Migrations/20260719130000_AddNotes.cs)
-- Purpose: Adds the `Notes` table and relationship to `Users`.
+#### `src/DevLoggerBackend.Infrastructure/Services/BcryptPasswordHasher.cs`
+- Wraps BCrypt hashing and verification.
 
-##### [src/DevLoggerBackend.Infrastructure/Persistence/Migrations/AppDbContextModelSnapshot.cs](src/DevLoggerBackend.Infrastructure/Persistence/Migrations/AppDbContextModelSnapshot.cs)
-- Purpose: Snapshot of the current EF Core model used for migrations.
-- Code present: generated representation of the current schema.
+#### `src/DevLoggerBackend.Infrastructure/Services/CurrentUserService.cs`
+- Reads the authenticated user's id from `ClaimTypes.NameIdentifier`.
+- Returns `null` when there is no HTTP context or no matching claim.
+- Assumes the claim value is a valid GUID.
+
+#### `src/DevLoggerBackend.Infrastructure/Services/PlaceholderTokenService.cs`
+- Generates JWTs for authenticated users.
+- Uses `Jwt:Key`, `Jwt:Issuer`, `Jwt:Audience`, and `Jwt:ExpiryMinutes`.
+- Adds `NameIdentifier`, `Email`, and `Role` claims.
+- Signs tokens with HMAC SHA256.
+- The class name says placeholder, but the implementation is the actual token issuer used by the app.
+
+#### `src/DevLoggerBackend.Infrastructure/Persistence/Migrations/20260227170537_InitialCreate.cs`
+- Creates the `Users` and `DailyLogs` tables.
+- Adds indexes on `Users.Email`, `DailyLogs.UserId`, and `DailyLogs.LogDate`.
+- Seeds the three initial users.
+
+#### `src/DevLoggerBackend.Infrastructure/Persistence/Migrations/20260719130000_AddNotes.cs`
+- Creates the `Notes` table.
+- Adds the one-to-one foreign key to `Users`.
+- Adds a unique index on `UserId`.
+
+#### `src/DevLoggerBackend.Infrastructure/Persistence/Migrations/AppDbContextModelSnapshot.cs`
+- Generated snapshot of the current EF Core model.
+- Used by future migrations.
+
+#### `src/DevLoggerBackend.Infrastructure/DevLoggerBackend.Infrastructure.csproj`
+- Targets `net10.0`.
+- References EF Core, Npgsql, BCrypt.Net-Next, configuration abstractions, dependency injection abstractions, and JWT packages.
+- Includes a framework reference to `Microsoft.AspNetCore.App`.
+
+---
+
+### Test Project
+
+#### `tests/DevLoggerBackend.Application.Tests/DevLoggerBackend.Application.Tests.csproj`
+- Targets `net10.0`.
+- Uses xUnit, Moq, FluentAssertions, Microsoft.NET.Test.Sdk, and Coverlet.
+- References the Application and Domain projects.
+
+#### `tests/DevLoggerBackend.Application.Tests/Features/DailyLogs/Commands/CreateDailyLogCommandHandlerTests.cs`
+- Verifies the create handler adds a new daily log and saves changes.
+- Uses mocked repository and unit of work dependencies.
+- Uses a mocked current user id so the handler can build an owned record.
+
+#### `tests/DevLoggerBackend.Application.Tests/Features/DailyLogs/Queries/GetAllDailyLogsQueryHandlerTests.cs`
+- Verifies the query handler returns the repository result mapped to DTOs.
+- Confirms the handler reads logs from the current user's repository path.
 
 ---
 
 ## 4. Code Execution Flow
 
-### Chronological Execution Order
-1. The application starts in [src/DevLoggerBackend.Api/Program.cs](src/DevLoggerBackend.Api/Program.cs).
-2. Configuration is loaded from appsettings and environment variables.
-3. Dependency injection is configured for application and infrastructure services.
-4. Controllers are mapped.
-5. Authentication middleware is registered and JWT validation is defined.
-6. The app builds and the startup pipeline executes.
-7. Database migrations are applied if enabled.
-8. An incoming request hits the middleware chain.
-9. The global exception middleware wraps the request.
-10. Authentication and authorization are enforced.
-11. The controller routes the request to MediatR.
-12. Validators run through the pipeline behavior.
-13. The handler executes the business rule.
-14. The repository stores or retrieves data using EF Core.
-15. The context persists to PostgreSQL.
-16. The response is serialized to JSON and returned to the client.
+### Authentication and Authorization
+- Registration creates a new developer user after duplicate-email checking.
+- Login verifies the password and issues a JWT.
+- JWT validation checks issuer, audience, lifetime, and signing key.
+- `NameIdentifier` is the claim used for the current user id.
+- Authenticated endpoints are protected with `[Authorize]`.
 
-### Authentication and Authorization Flow
-- The API uses JWT bearer authentication.
-- The token is validated based on issuer, audience, lifetime, and signing key from configuration.
-- Controllers for daily logs and notes are decorated with `[Authorize]`.
-- The current user id is derived from the JWT claim `NameIdentifier` by [src/DevLoggerBackend.Infrastructure/Services/CurrentUserService.cs](src/DevLoggerBackend.Infrastructure/Services/CurrentUserService.cs).
-- Handlers use this service to ensure the request is tied to the correct authenticated user.
+### Daily Log Flow
+- Controllers accept `CreateDailyLogDto` or `SearchDailyLogsRequestDto`.
+- Create and update validators enforce date, task text, and Git link rules.
+- Handlers scope all data to the authenticated user.
+- Search accepts a keyword and optional date boundaries.
+- The repository applies the final filtering and descending sort order.
+
+### Notes Flow
+- `GET /api/notes` returns `204 No Content` when the note does not exist.
+- `PUT /api/notes` upserts the note for the current user.
+- Content length is capped at 100000 characters.
 
 ### Validation Flow
-- Validators are discovered by reflection and registered through dependency injection.
-- Every MediatR request passes through [src/DevLoggerBackend.Application/Common/Behaviors/ValidationBehavior.cs](src/DevLoggerBackend.Application/Common/Behaviors/ValidationBehavior.cs).
-- Validation failures throw `ValidationException`, which the API middleware converts into `400 Bad Request` responses.
+- Validators are registered by assembly scanning.
+- MediatR runs `ValidationBehavior` before the actual handler.
+- Validation failures are grouped by property name and returned through the middleware as a structured 400 response.
 
-### Business Logic Flow
-- Auth flows handle registration and login.
-- Daily log flows create, update, delete, retrieve, and search entries.
-- Note flows create or update a single note per user.
+### Timestamp Flow
+- Handlers often set `CreatedAtUtc` and `UpdatedAtUtc` when creating records.
+- `AppDbContext.SaveChangesAsync` also stamps timestamps on every `BaseEntity`.
+- Updates set `UpdatedAtUtc` so the entity reflects the latest write time.
 
 ---
 
 ## 5. Database Documentation
 
-### Database Models
-The schema is centered around three entities:
-- `User` – an account and identity object
-- `DailyLog` – a daily developer journal entry
-- `Note` – a user-specific note
+### Tables
+- `Users` stores user identity, password hash, and role.
+- `DailyLogs` stores one user's daily journal entries.
+- `Notes` stores one note per user.
 
 ### Relationships
-- One `User` has many `DailyLog` records.
-- One `User` has at most one `Note`.
-- A `DailyLog` belongs to one `User`.
-- A `Note` belongs to one `User`.
+- One user has many daily logs.
+- One user has at most one note.
+- Every daily log belongs to exactly one user.
+- Every note belongs to exactly one user.
 
-### Table Layout
-- `Users` table stores user identity, password hash, and role.
-- `DailyLogs` stores journal entries and links them to the user who owns them.
-- `Notes` stores content for a single note per user.
+### Constraints and Indexes
+- `Users.Email` is unique.
+- `DailyLogs.UserId` is indexed.
+- `DailyLogs.LogDate` is indexed.
+- `Notes.UserId` is unique.
+- `DailyLogs.GitLink` has a max length of 2048.
+- `Notes.Content` has a max length of 100000.
 
-### Database Initialization
-- The database is configured through EF Core in [src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs](src/DevLoggerBackend.Infrastructure/Persistence/AppDbContext.cs).
-- When the app starts, migrations can be applied automatically through [src/DevLoggerBackend.Api/Extensions/WebApplicationExtensions.cs](src/DevLoggerBackend.Api/Extensions/WebApplicationExtensions.cs).
-- The context seeds three sample users at startup.
+### Seed Data
+- The model seeds three sample users.
+- The seed data is intended for local development and manual login testing.
+- Roles seeded in the database include developer, senior developer, and team lead.
 
-### CRUD Operations
-- User registration creates a new `User`.
-- Daily log creation inserts a new `DailyLog`.
-- Daily log updates modify an existing `DailyLog`.
-- Daily log deletion removes the entity.
-- Notes are created or updated for the current user.
-
-### Query Execution Flow
-- Controllers call MediatR which delegates to handlers.
-- Handlers use repository abstractions.
-- Repositories use EF Core `DbSet` queries.
-- The query results are mapped to DTOs and returned to the client.
+### Schema Management
+- The current schema is represented by EF Core migrations.
+- The startup path can apply migrations automatically.
+- The migration snapshot tracks the current model state for future schema changes.
 
 ---
 
 ## 6. Dependencies
 
 ### Internal Dependencies
-- [src/DevLoggerBackend.Api](src/DevLoggerBackend.Api) depends on [src/DevLoggerBackend.Application](src/DevLoggerBackend.Application) and [src/DevLoggerBackend.Infrastructure](src/DevLoggerBackend.Infrastructure).
-- [src/DevLoggerBackend.Application](src/DevLoggerBackend.Application) depends on [src/DevLoggerBackend.Domain](src/DevLoggerBackend.Domain).
-- [src/DevLoggerBackend.Infrastructure](src/DevLoggerBackend.Infrastructure) depends on [src/DevLoggerBackend.Application](src/DevLoggerBackend.Application) and [src/DevLoggerBackend.Domain](src/DevLoggerBackend.Domain).
+- API depends on Application and Infrastructure.
+- Application depends on Domain.
+- Infrastructure depends on Application and Domain.
+- Tests depend on Application and Domain.
 
-### External Libraries and Packages
-- ASP.NET Core / ASP.NET Core Authentication JWT Bearer – HTTP hosting and JWT validation
-- MediatR – command/query dispatching
-- FluentValidation – validation rules
-- EF Core and Npgsql – ORM and PostgreSQL provider
-- Serilog – structured logging
-- BCrypt.Net-Next – password hashing
-- Swashbuckle.AspNetCore – Swagger/OpenAPI documentation
-- xUnit, Moq, FluentAssertions – testing
+### External Libraries
+- ASP.NET Core
+- Microsoft.AspNetCore.Authentication.JwtBearer
+- Entity Framework Core
+- Npgsql.EntityFrameworkCore.PostgreSQL
+- MediatR
+- FluentValidation
+- Serilog
+- BCrypt.Net-Next
+- Swashbuckle.AspNetCore
+- xUnit
+- Moq
+- FluentAssertions
 
-### Purpose of Major Dependencies
-- MediatR keeps handlers decoupled from controllers and encourages CQRS.
-- FluentValidation keeps business input validation centralized.
-- EF Core enables type-safe persistence and migration management.
-- Npgsql is the PostgreSQL driver.
-- Serilog provides operational logging to console and files.
-- BCrypt safely hashes passwords.
+### Why They Are Used
+- MediatR keeps controllers thin and use cases isolated.
+- FluentValidation centralizes request validation.
+- EF Core and Npgsql provide PostgreSQL persistence.
+- Serilog provides structured logging to console and file.
+- BCrypt protects passwords.
+- Swashbuckle documents the API and supports bearer-token testing.
 
 ---
 
 ## 7. Configuration
 
-### Environment Variables and Settings
-Configuration is sourced from:
-- [src/DevLoggerBackend.Api/appsettings.json](src/DevLoggerBackend.Api/appsettings.json)
-- [src/DevLoggerBackend.Api/appsettings.Development.json](src/DevLoggerBackend.Api/appsettings.Development.json)
+### Sources
+- `src/DevLoggerBackend.Api/appsettings.json`
+- `src/DevLoggerBackend.Api/appsettings.Development.json`
 - environment variables such as `PORT`, `DATABASE_URL`, and `ASPNETCORE_ENVIRONMENT`
 
-### Key Configuration Values
-- `ConnectionStrings:DefaultConnection` – PostgreSQL connection string
-- `Jwt:Key`, `Jwt:Issuer`, `Jwt:Audience`, `Jwt:ExpiryMinutes` – JWT settings
-- `AllowedOrigins` – CORS origins permitted by the frontend
-- `EnableSwaggerInProduction` – allows Swagger in production when enabled
-- `ApplyMigrationsOnStartup` – controls automatic migration execution
+### Key Settings
+- `ConnectionStrings:DefaultConnection`
+- `Jwt:Key`
+- `Jwt:Issuer`
+- `Jwt:Audience`
+- `Jwt:ExpiryMinutes`
+- `AllowedOrigins`
+- `EnableSwaggerInProduction`
+- `ApplyMigrationsOnStartup`
+- `Serilog` minimum levels and overrides
 
-### Runtime Configuration Notes
-- The app binds to `http://localhost:5000` by default unless `PORT` is set.
-- The Docker setup overrides the connection string for container networking.
+### Runtime Notes
+- The API defaults to port 5000 unless `PORT` is present.
+- CORS uses the configured allowed origins list.
+- Docker Compose overrides the connection string for container-to-container networking.
+- Swagger can be exposed in production when the flag is enabled.
 
-### Deployment Configuration
-- The project supports Docker deployment and Render-style hosting.
-- The Dockerfile uses a multi-stage build and exposes port `5000`.
-- The README includes Render deployment instructions with environment variables.
-
-### Secrets Management
-- Secret values such as JWT keys and connection strings are currently stored in configuration files and environment variables.
-- For production systems, these should be moved to a stronger secrets store such as environment-specific secret management services.
+### Secrets Note
+- The checked-in configuration includes real development values, so the repo should be treated as sensitive from a secrets-management standpoint.
+- Production should move these values to environment-specific secret storage.
 
 ---
 
 ## 8. Feature Documentation
 
-### Authentication Feature
+### Authentication
 - Endpoints: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/verify`
-- Files involved: [src/DevLoggerBackend.Api/Controllers/AuthController.cs](src/DevLoggerBackend.Api/Controllers/AuthController.cs), [src/DevLoggerBackend.Application/Features/Auth/Commands/RegisterCommand.cs](src/DevLoggerBackend.Application/Features/Auth/Commands/RegisterCommand.cs), [src/DevLoggerBackend.Application/Features/Auth/Commands/LoginCommand.cs](src/DevLoggerBackend.Application/Features/Auth/Commands/LoginCommand.cs), [src/DevLoggerBackend.Infrastructure/Services/PlaceholderTokenService.cs](src/DevLoggerBackend.Infrastructure/Services/PlaceholderTokenService.cs)
-- Execution flow: controller receives request -> mediator -> validator -> handler -> repository/context -> JWT created and returned
+- Registration checks for duplicate email, hashes the password, stores the user as a developer, and returns a 201 message response.
+- Login returns a token plus a simplified user DTO.
+- Verify reads the current user id from the token claim and returns the loaded user profile.
+- The placeholder query file exists but is not part of the actual verify endpoint flow.
 
-### Daily Logs Feature
+### Daily Logs
 - Endpoints: `GET /api/dailylogs`, `GET /api/dailylogs/{id}`, `POST /api/dailylogs`, `PUT /api/dailylogs/{id}`, `DELETE /api/dailylogs/{id}`, `POST /api/dailylogs/search`
-- Files involved: [src/DevLoggerBackend.Api/Controllers/DailyLogsController.cs](src/DevLoggerBackend.Api/Controllers/DailyLogsController.cs), [src/DevLoggerBackend.Application/Features/DailyLogs](src/DevLoggerBackend.Application/Features/DailyLogs), [src/DevLoggerBackend.Infrastructure/Repositories/DailyLogRepository.cs](src/DevLoggerBackend.Infrastructure/Repositories/DailyLogRepository.cs)
-- Execution flow: authenticated user sends data -> controller -> handler -> repository -> EF Core -> DTO response
+- Every operation is restricted to the authenticated user.
+- Create and update share the same DTO shape.
+- Search is POST-based and accepts optional date filters plus a keyword.
+- Output DTOs use string-formatted dates and timestamps.
 
-### Notes Feature
+### Notes
 - Endpoints: `GET /api/notes`, `PUT /api/notes`
-- Files involved: [src/DevLoggerBackend.Api/Controllers/NotesController.cs](src/DevLoggerBackend.Api/Controllers/NotesController.cs), [src/DevLoggerBackend.Application/Features/Notes](src/DevLoggerBackend.Application/Features/Notes), [src/DevLoggerBackend.Infrastructure/Repositories/NoteRepository.cs](src/DevLoggerBackend.Infrastructure/Repositories/NoteRepository.cs)
-- Execution flow: the current user’s note is fetched or updated in a single-user-per-note model
+- GET returns 204 when there is no note.
+- PUT creates or updates a single per-user note.
+- The note model is intentionally simple and one-record-per-user.
 
 ---
 
 ## 9. Architecture and Design Patterns
 
 ### Architecture Style
-The project uses Clean Architecture with clear separation between:
-- API / transport layer
-- Application / use-case layer
-- Domain model layer
-- Infrastructure / persistence layer
+- Clean Architecture with explicit boundaries between transport, application, domain, and infrastructure.
+- CQRS-style request handling through MediatR.
 
-### Design Patterns Used
-- CQRS via MediatR for commands and queries
-- Repository pattern for persistence abstraction
-- Dependency injection for service wiring
-- Unit of Work pattern through `IUnitOfWork`
-- Middleware pattern for centralized exception handling
-- DTO pattern for transport objects
-- Validation pipeline behavior for request validation
+### Patterns in Use
+- Repository pattern for persistence abstraction.
+- Unit of Work through `IUnitOfWork` and `AppDbContext`.
+- Pipeline behavior for validation.
+- Middleware for exception normalization.
+- DTOs for API contracts.
+- Dependency injection for wiring services together.
 
-### Folder Organization
-The project is intentionally split by responsibility:
-- `Api` for HTTP concerns
-- `Application` for business logic and abstractions
-- `Domain` for entities and enums
-- `Infrastructure` for EF Core and implementation details
-- `tests` for application-level unit tests
-
-### Coding Standards and Best Practices
-- Strong typing with nullable reference types enabled
-- Explicit project boundaries and abstractions
-- Use of DTOs to decouple API contract from domain entities
-- Validation before persistence
-- Consistent use of async/await for I/O-bound operations
-- Centralized exception handling for predictable API responses
+### Design Notes
+- The code favors async I/O throughout.
+- Read operations frequently use `AsNoTracking()`.
+- Ownership is enforced in handlers instead of controller code.
+- The note feature is designed as an upsert rather than a create/delete lifecycle.
 
 ---
 
 ## 10. Developer Notes
 
-### How to Run Locally
-- Restore and build the solution.
-- Start PostgreSQL locally or via Docker Compose.
-- Set the connection string if necessary.
-- Run the API with `dotnet run --project src/DevLoggerBackend.Api`.
+### Local Run
+- Restore, build, and run from the repository root.
+- Ensure PostgreSQL is available locally or via Docker Compose.
+- `dotnet run --project src/DevLoggerBackend.Api` starts the API.
 
-### How to Work with Migrations
-- Use `dotnet ef` from the repository root with the API project as the startup project.
-- Migrations are applied at startup when enabled.
+### Migrations
+- EF Core migration commands use the API project as the startup project and the Infrastructure project as the migrations project.
+- Startup migration execution is enabled by configuration in the checked-in settings.
 
-### How to Extend the Project
-- Add a new feature by creating controllers in the API project, handlers/queries in the Application project, and repository implementations in Infrastructure.
-- Register dependencies in the infrastructure DI class.
-- Add validators to enforce input rules.
+### Extending The Codebase
+- New use cases should be added in the Application project.
+- New persistence behavior should live in Infrastructure.
+- New HTTP endpoints belong in the API project.
+- New request rules should be enforced with validators.
 
 ### Important Caveats
-- The `VerifyAuthQuery` implementation is currently a placeholder and does not load a real user profile from JWT claims.
-- The current token service is a placeholder-style implementation but is functional for baseline auth.
-- The appsettings file contains concrete development credentials; this should be improved for production.
+- `VerifyAuthQuery` is a stub.
+- `GetDefaultUserAsync` and `GetAllAsync` exist but are not used by current request handlers.
+- `CreateDailyLogCommandHandler` injects `IUserRepository` without using it.
+- Health checks are registered but there is no mapped health endpoint in the current pipeline.
+- The README still says .NET 8, while the project files themselves target `net10.0`.
 
 ---
 
 ## 11. Additional Observations
 
-### Performance Considerations
-- Repository methods use `AsNoTracking()` where appropriate, which improves read-only query performance.
-- Search operations are simple and database-driven, but adding indexes or full-text search could improve scalability for large datasets.
+### Logging
+- The app logs through Serilog and the exception middleware.
+- Startup logs are written to a rolling file under `logs/`.
 
-### Security Considerations
+### Security
 - Passwords are hashed with BCrypt.
-- JWTs are used for authentication.
-- Input is validated before handlers execute.
-- However, production security should be strengthened by:
-  - moving secrets out of source-controlled config
-  - using stronger key rotation and secret management
-  - enforcing role-based authorization more explicitly
-  - carefully reviewing the `AllowedOrigins` policy
+- JWT bearer auth is used for protected routes.
+- Validation runs before handlers.
+- The code still relies on source-controlled development config values, so production hardening is still needed.
 
-### Potential Improvements
-- Implement actual user profile lookup from JWT claims in the auth verification query.
-- Add role-based authorization rules for admin or lead-only endpoints.
-- Introduce pagination for large daily log sets.
-- Add integration tests around controllers and EF Core behavior.
-- Replace placeholder token service with a production-grade token strategy if needed.
-- Add explicit audit logging and audit trail features.
+### Practical Implementation Details
+- `AuthController.Verify` uses `[FromServices]` parameters instead of constructor-injected repositories.
+- `DailyLogsController.Create` returns a `CreatedAtAction` response pointing at `GetById`.
+- Search dates are parsed leniently and invalid values are ignored rather than rejected.
+- Note GET intentionally returns 204 instead of a null payload.
+- `PlaceholderTokenService` is the real token issuer despite its name.
 
-### Hidden Implementation Details
-- The app seeds demo users during model creation.
-- The `AppDbContext` automatically stamps timestamps whenever entities are added or modified.
-- The API uses `CreatedAtAction` for resource creation responses.
-- Notes are designed as a one-note-per-user model.
+### Potential Future Improvements
+- Replace the placeholder auth verification query with a real profile lookup flow.
+- Remove unused injections and repository helpers if they remain unnecessary.
+- Add paging to daily log retrieval and search.
+- Add integration tests around API endpoints and EF Core behavior.
+- Add health check routing if operational monitoring is needed.
 
 ---
 
 ## Test Coverage Summary
 
-The test project [tests/DevLoggerBackend.Application.Tests](tests/DevLoggerBackend.Application.Tests) covers selected application handlers:
-- [tests/DevLoggerBackend.Application.Tests/Features/DailyLogs/Commands/CreateDailyLogCommandHandlerTests.cs](tests/DevLoggerBackend.Application.Tests/Features/DailyLogs/Commands/CreateDailyLogCommandHandlerTests.cs)
-- [tests/DevLoggerBackend.Application.Tests/Features/DailyLogs/Queries/GetAllDailyLogsQueryHandlerTests.cs](tests/DevLoggerBackend.Application.Tests/Features/DailyLogs/Queries/GetAllDailyLogsQueryHandlerTests.cs)
+The current test project covers two application handlers:
+- `tests/DevLoggerBackend.Application.Tests/Features/DailyLogs/Commands/CreateDailyLogCommandHandlerTests.cs`
+- `tests/DevLoggerBackend.Application.Tests/Features/DailyLogs/Queries/GetAllDailyLogsQueryHandlerTests.cs`
 
-These tests validate the basic behavior of the daily log creation and retrieval handlers using mocked repositories and services.
+Coverage today is focused on the daily log use case:
+- create daily log adds and saves a new entity
+- get all daily logs returns repository results as DTOs
+
+There are currently no tests for auth, notes, controllers, middleware, or infrastructure repositories.
