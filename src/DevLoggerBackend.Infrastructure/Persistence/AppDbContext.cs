@@ -43,7 +43,7 @@ public class AppDbContext : DbContext, IUnitOfWork
 
     private static void SeedUsers(ModelBuilder modelBuilder)
     {
-        var now = DateTime.UtcNow;
+        var seedTime = new DateTime(2026, 7, 25, 12, 0, 0, DateTimeKind.Utc);
 
         modelBuilder.Entity<User>().HasData(
             new User
@@ -51,30 +51,30 @@ public class AppDbContext : DbContext, IUnitOfWork
                 Id = Guid.Parse("9d2b489f-c8f9-4f36-98fd-4a1e0e9fdd11"),
                 Name = "John Doe",
                 Email = "john@example.com",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123"),
+                PasswordHash = "$2a$11$gHj0CTIF6KI2Rvl4hqzw1uBaTw9YAkfQourqTmM9kerpKOFI1c.Fe",
                 Role = Domain.Enums.UserRole.Developer,
-                CreatedAtUtc = now,
-                UpdatedAtUtc = now
+                CreatedAtUtc = seedTime,
+                UpdatedAtUtc = seedTime
             },
             new User
             {
                 Id = Guid.Parse("8ac15b3b-230c-43ad-8bc4-fcb1af7f1459"),
                 Name = "Jane Smith",
                 Email = "jane@example.com",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123"),
+                PasswordHash = "$2a$11$SuL1XY1j2PPACdaQClHZ2ejJjRIHvew5ALae.U4dLGuoO04fOOI66",
                 Role = Domain.Enums.UserRole.SeniorDeveloper,
-                CreatedAtUtc = now,
-                UpdatedAtUtc = now
+                CreatedAtUtc = seedTime,
+                UpdatedAtUtc = seedTime
             },
             new User
             {
                 Id = Guid.Parse("6cf97b16-a4b9-448f-8887-f6c8a21a58ec"),
                 Name = "Bob Lee",
                 Email = "bob@example.com",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123"),
+                PasswordHash = "$2a$11$aHO3NhtzdhgfgbONK3xn7uNQj0B3MLSme.lggL8AxWn0lH2c1UdPO",
                 Role = Domain.Enums.UserRole.TeamLead,
-                CreatedAtUtc = now,
-                UpdatedAtUtc = now
+                CreatedAtUtc = seedTime,
+                UpdatedAtUtc = seedTime
             }
         );
     }
