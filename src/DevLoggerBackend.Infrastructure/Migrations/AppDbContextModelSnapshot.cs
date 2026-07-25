@@ -8,7 +8,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace DevLoggerBackend.Infrastructure.Persistence.Migrations
+namespace DevLoggerBackend.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
     partial class AppDbContextModelSnapshot : ModelSnapshot
@@ -17,7 +17,7 @@ namespace DevLoggerBackend.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "10.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -143,32 +143,32 @@ namespace DevLoggerBackend.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("9d2b489f-c8f9-4f36-98fd-4a1e0e9fdd11"),
-                            CreatedAtUtc = new DateTime(2026, 2, 27, 17, 5, 34, 840, DateTimeKind.Utc).AddTicks(5207),
+                            CreatedAtUtc = new DateTime(2026, 7, 25, 12, 0, 0, 0, DateTimeKind.Utc),
                             Email = "john@example.com",
                             Name = "John Doe",
                             PasswordHash = "$2a$11$gHj0CTIF6KI2Rvl4hqzw1uBaTw9YAkfQourqTmM9kerpKOFI1c.Fe",
                             Role = 1,
-                            UpdatedAtUtc = new DateTime(2026, 2, 27, 17, 5, 34, 840, DateTimeKind.Utc).AddTicks(5207)
+                            UpdatedAtUtc = new DateTime(2026, 7, 25, 12, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
                         {
                             Id = new Guid("8ac15b3b-230c-43ad-8bc4-fcb1af7f1459"),
-                            CreatedAtUtc = new DateTime(2026, 2, 27, 17, 5, 34, 840, DateTimeKind.Utc).AddTicks(5207),
+                            CreatedAtUtc = new DateTime(2026, 7, 25, 12, 0, 0, 0, DateTimeKind.Utc),
                             Email = "jane@example.com",
                             Name = "Jane Smith",
                             PasswordHash = "$2a$11$SuL1XY1j2PPACdaQClHZ2ejJjRIHvew5ALae.U4dLGuoO04fOOI66",
                             Role = 2,
-                            UpdatedAtUtc = new DateTime(2026, 2, 27, 17, 5, 34, 840, DateTimeKind.Utc).AddTicks(5207)
+                            UpdatedAtUtc = new DateTime(2026, 7, 25, 12, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
                         {
                             Id = new Guid("6cf97b16-a4b9-448f-8887-f6c8a21a58ec"),
-                            CreatedAtUtc = new DateTime(2026, 2, 27, 17, 5, 34, 840, DateTimeKind.Utc).AddTicks(5207),
+                            CreatedAtUtc = new DateTime(2026, 7, 25, 12, 0, 0, 0, DateTimeKind.Utc),
                             Email = "bob@example.com",
                             Name = "Bob Lee",
                             PasswordHash = "$2a$11$aHO3NhtzdhgfgbONK3xn7uNQj0B3MLSme.lggL8AxWn0lH2c1UdPO",
                             Role = 3,
-                            UpdatedAtUtc = new DateTime(2026, 2, 27, 17, 5, 34, 840, DateTimeKind.Utc).AddTicks(5207)
+                            UpdatedAtUtc = new DateTime(2026, 7, 25, 12, 0, 0, 0, DateTimeKind.Utc)
                         });
                 });
 
@@ -183,13 +183,6 @@ namespace DevLoggerBackend.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("DevLoggerBackend.Domain.Entities.User", b =>
-                {
-                    b.Navigation("DailyLogs");
-
-                    b.Navigation("Note");
-                });
-
             modelBuilder.Entity("DevLoggerBackend.Domain.Entities.Note", b =>
                 {
                     b.HasOne("DevLoggerBackend.Domain.Entities.User", "User")
@@ -199,6 +192,13 @@ namespace DevLoggerBackend.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DevLoggerBackend.Domain.Entities.User", b =>
+                {
+                    b.Navigation("DailyLogs");
+
+                    b.Navigation("Note");
                 });
 #pragma warning restore 612, 618
         }
