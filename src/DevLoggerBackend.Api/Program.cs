@@ -6,6 +6,7 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 var renderPort = Environment.GetEnvironmentVariable("PORT");
@@ -141,6 +142,7 @@ if (applyMigrationsOnStartup)
 {
     await app.ApplyDatabaseMigrationsAsync();
 }
-
+app.UseHttpMetrics();
 app.UseApiPipeline();
+app.MapMetrics();
 app.Run();
