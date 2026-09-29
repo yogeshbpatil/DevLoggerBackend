@@ -934,3 +934,56 @@ The codebase uses Clean Architecture with a CQRS-style application layer. The AP
 - `CurrentUserService` is claim-based, so any custom token changes must still include `ClaimTypes.NameIdentifier`.
 - The note feature is intentionally an upsert, not a multi-note collection.
 - `Program.cs` will try to open the Swagger UI automatically in development on supported platforms.
+
+## 12. Verified Current-State Addendum (2026-09-29)
+
+This section records a fresh check of the source and configuration on 2026-09-29. It is additive: all earlier project notes are retained. Where an older description conflicts with a current source file, use the explicit clarification below for the current behavior.
+
+### Framework And Documentation Drift
+
+- All four projects (API, Application, Domain, and Infrastructure) and the test project target `net10.0`; the API Dockerfile uses the .NET 10 SDK and ASP.NET runtime images.
+- `README.md` still describes the backend as built with .NET 8. That introductory framework version is stale; the project files and Dockerfile are the source of truth. The README's local run, test, and deployment command examples remain documented there and should be checked against the .NET 10 SDK installed on the machine running them.
+- The API currently defaults to `http://localhost:5000`; when `PORT` is set it binds to `http://0.0.0.0:{PORT}`. The Dockerfile also declares `ASPNETCORE_URLS=http://+:5000`, so container binding should be verified against the explicit URL selection in `Program.cs` when changing deployment configuration.
+
+### Current HTTP Contract
+
+| Endpoint | Authentication | Current result |
+| --- | --- | --- |
+| `POST /api/auth/register` | Anonymous | `201 Created` with a success message; duplicate email is reported as `409 Conflict`. |
+| `POST /api/auth/login` | Anonymous | `200 OK` with the user profile and JWT. |
+| `GET /api/auth/verify` | Bearer JWT required | `200 OK` with the current user's id, name, email, and role; returns the application's unauthorized error if the claim is missing or the user no longer exists. |
+| `GET /api/dailylogs` | Bearer JWT required | `200 OK` with the current user's logs, ordered by log date descending. |
+| `GET /api/dailylogs/{id}` | Bearer JWT required | `200 OK` for an owned log; otherwise `404 Not Found`. |
+| `POST /api/dailylogs` | Bearer JWT required | `201 Created` with the created log and a location generated from `GetById`. |
+| `PUT /api/dailylogs/{id}` | Bearer JWT required | `200 OK` with the updated log; ownership and existence are checked by the handler. |
+| `DELETE /api/dailylogs/{id}` | Bearer JWT required | `204 No Content` after deleting an owned log. |
+| `POST /api/dailylogs/search` | Bearer JWT required | `200 OK` with matching logs; the body accepts optional `Keyword`, `DateFrom`, and `DateTo`. |
+| `GET /api/notes` | Bearer JWT required | `200 OK` with the user's note or `204 No Content` when no note exists. |
+| `PUT /api/notes` | Bearer JWT required | `200 OK` with the created or updated note. |
+
+Daily-log search applies optional text and date filters and returns results newest-first. Invalid or empty search date strings are treated as absent filters, not validation errors. There is no paging on the list or search endpoints. Daily-log and note command validators run through the MediatR validation behavior; ordinary ASP.NET request-binding failures are handled by the API controller framework rather than that behavior.
+
+### Authentication Verification Clarification
+
+`GET /api/auth/verify` is implemented and currently reads `ICurrentUserService` and `IUserRepository` directly in `AuthController`. It returns the user profile and is not a stub. Separately, `Features/Auth/Queries/VerifyAuthQuery.cs` remains an unused MediatR scaffold whose handler returns `null`; no current controller calls it. The earlier notes about the unused query refer only to that separate scaffold.
+
+The service registered as `ITokenService` is named `PlaceholderTokenService`, but its current implementation does generate signed JWTs using the configured issuer, audience, expiry, and HMAC-SHA256 signing key. The class name does not mean tokens are currently placeholders. The `Developer`, `SeniorDeveloper`, `TeamLead`, and `Manager` roles are included as claims/profile data; the current controllers do not apply role-specific authorization policies.
+
+### Runtime, Database, And Monitoring Details
+
+- The checked-in `appsettings.json` sets `ApplyMigrationsOnStartup` to `true`, so startup migration is enabled by default unless configuration overrides it. If the setting is absent, `Program.cs` defaults it to enabled only in Development. A PostgreSQL authentication failure with SQL state `28P01` is logged and tolerated only in Development; outside Development it aborts startup.
+- `AddInfrastructure()` gives `DATABASE_URL` precedence over `ConnectionStrings:DefaultConnection`. An absolute database URL is converted to an Npgsql connection string with SSL required; a non-URL value is passed through as a connection string.
+- Health-check services are registered, but no health-check route is mapped. `/health` is therefore not an available endpoint in the current API. Prometheus metrics are exposed at `/metrics`.
+- `docker-compose.yml` starts only PostgreSQL and the API. It does not start Prometheus or Grafana. The checked-in Prometheus configuration scrapes `host.docker.internal:5000` every 15 seconds, which assumes the API is reachable from Prometheus on the host; Grafana setup is documented separately in `DOCKER-GRAFANA-SUMMARY.md`.
+- The app's configured CORS origins currently include `http://localhost:3000` and `https://office-developer-journal.vercel.app`; the fallback origin in code is localhost when no configured origins are present.
+
+### Test Coverage Snapshot
+
+The test project currently contains two test source files and two focused application unit tests: one verifies the daily-log create handler adds and saves a valid log, and one verifies the get-all handler maps the repository result. There are currently no API/controller integration tests, authentication tests, repository/database tests, middleware tests, or migration tests in the test project. This describes current coverage, not a claim that the uncovered areas are known to fail.
+
+### Current Operational Cautions
+
+- Replace the checked-in JWT and database development credentials with deployment-managed secrets before production use; do not rely on repository defaults for security.
+- Automatic migrations are enabled by the checked-in base settings. Production deployments should deliberately decide whether migrations run in the API process or in a controlled deployment step.
+- Verify the container's reachable bind address when deploying: the API's no-`PORT` code path selects localhost while the Dockerfile declares a wildcard `ASPNETCORE_URLS` value.
+- Swagger is enabled by the checked-in production flag. Disable it through deployment configuration if production API documentation should not be public.
