@@ -25,7 +25,7 @@ public class NotesController : ControllerBase
         return note is null ? NoContent() : Ok(note);
     }
 
-    /// <summary>Creates the current user's note, or updates it when it already exists.</summary> test
+    /// <summary>Creates the current user's note, or updates it when it already exists.</summary>
     [HttpPut]
     [ProducesResponseType(typeof(NoteDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<NoteDto>> Save([FromBody] SaveNoteDto request, CancellationToken cancellationToken)
