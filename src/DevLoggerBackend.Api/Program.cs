@@ -144,5 +144,6 @@ if (applyMigrationsOnStartup)
 }
 app.UseHttpMetrics();
 app.UseApiPipeline();
+app.MapHealthChecks("/health");
 app.MapMetrics();
 app.Run();

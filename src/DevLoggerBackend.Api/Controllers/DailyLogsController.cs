@@ -54,7 +54,7 @@ public class DailyLogsController : ControllerBase
     }
 
     /// <summary>
-    /// Updates a daily log.
+    /// Updates a daily log.test
     /// </summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(DailyLogDto), StatusCodes.Status200OK)]
