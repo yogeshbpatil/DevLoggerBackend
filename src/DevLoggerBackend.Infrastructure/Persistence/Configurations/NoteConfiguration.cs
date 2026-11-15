@@ -10,7 +10,9 @@ public class NoteConfiguration : IEntityTypeConfiguration<Note>
     {
         builder.ToTable("Notes");
         builder.HasKey(x => x.Id);
-        builder.Property(x => x.Content).IsRequired().HasMaxLength(100_000);
+        // PostgreSQL text has no application-defined character limit and is suitable for
+        // notes whose size may grow beyond the previous 100,000-character cap.
+        builder.Property(x => x.Content).IsRequired().HasColumnType("text");
         builder.HasIndex(x => x.UserId).IsUnique();
         builder.HasOne(x => x.User)
             .WithOne(x => x.Note)

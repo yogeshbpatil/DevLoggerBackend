@@ -7,6 +7,6 @@ public sealed class SaveNoteCommandValidator : AbstractValidator<SaveNoteCommand
 {
     public SaveNoteCommandValidator()
     {
-        RuleFor(x => x.Payload.Content).NotNull().MaximumLength(100_000);
+        RuleFor(x => x.Payload.Content).NotNull();
     }
 }

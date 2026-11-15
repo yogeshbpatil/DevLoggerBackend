@@ -83,8 +83,7 @@ namespace DevLoggerBackend.Infrastructure.Migrations
 
                     b.Property<string>("Content")
                         .IsRequired()
-                        .HasMaxLength(100000)
-                        .HasColumnType("character varying(100000)");
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
