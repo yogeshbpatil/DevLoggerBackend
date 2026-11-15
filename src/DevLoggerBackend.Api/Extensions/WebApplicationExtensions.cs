@@ -81,6 +81,9 @@ public static class WebApplicationExtensions
                     "ProductVersion" character varying(32) NOT NULL,
                     CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
                 );
+
+                ALTER TABLE "Notes"
+                ALTER COLUMN "Content" TYPE text;
                 """;
 
             await historyCommand.ExecuteNonQueryAsync();

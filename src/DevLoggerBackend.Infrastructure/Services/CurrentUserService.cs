@@ -25,7 +25,7 @@ public class CurrentUserService : ICurrentUserService
             if (userIdClaim == null)
                 return null;
 
-            return Guid.Parse(userIdClaim.Value);
+            return Guid.TryParse(userIdClaim.Value, out var userId) ? userId : null;
         }
     }
 }
