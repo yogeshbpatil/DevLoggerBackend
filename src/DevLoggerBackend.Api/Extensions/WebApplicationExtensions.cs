@@ -30,6 +30,14 @@ public static class WebApplicationExtensions
 
         try
         {
+            var repairedLegacyHistory = await RepairLegacyMigrationHistoryAsync(dbContext);
+            if (repairedLegacyHistory)
+            {
+                logger.LogWarning(
+                    "Existing Developer Journal tables were found without the initial EF migration history record. " +
+                    "The initial migration was marked as applied so pending migrations can run without changing existing data.");
+            }
+
             await dbContext.Database.MigrateAsync();
         }
         catch (PostgresException ex) when (ex.SqlState == "28P01")
@@ -44,6 +52,51 @@ public static class WebApplicationExtensions
             logger.LogWarning(
                 "Continuing startup in Development without applying migrations. " +
                 "Update ConnectionStrings:DefaultConnection with valid PostgreSQL credentials.");
+        }
+    }
+
+    private static async Task<bool> RepairLegacyMigrationHistoryAsync(AppDbContext dbContext)
+    {
+        await dbContext.Database.OpenConnectionAsync();
+
+        try
+        {
+            await using var schemaCommand = dbContext.Database.GetDbConnection().CreateCommand();
+            schemaCommand.CommandText = """
+                SELECT to_regclass('"Users"') IS NOT NULL
+                   AND to_regclass('"DailyLogs"') IS NOT NULL
+                   AND to_regclass('"Notes"') IS NOT NULL;
+                """;
+
+            var hasExistingJournalSchema = (bool)(await schemaCommand.ExecuteScalarAsync() ?? false);
+            if (!hasExistingJournalSchema)
+            {
+                return false;
+            }
+
+            await using var historyCommand = dbContext.Database.GetDbConnection().CreateCommand();
+            historyCommand.CommandText = """
+                CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+                    "MigrationId" character varying(150) NOT NULL,
+                    "ProductVersion" character varying(32) NOT NULL,
+                    CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY ("MigrationId")
+                );
+                """;
+
+            await historyCommand.ExecuteNonQueryAsync();
+
+            await using var baselineCommand = dbContext.Database.GetDbConnection().CreateCommand();
+            baselineCommand.CommandText = """
+                INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+                VALUES ('20260725125919_InitialCreate', '10.0.0')
+                ON CONFLICT ("MigrationId") DO NOTHING;
+                """;
+
+            return await baselineCommand.ExecuteNonQueryAsync() > 0;
+        }
+        finally
+        {
+            await dbContext.Database.CloseConnectionAsync();
         }
     }
 }
